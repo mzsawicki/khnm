@@ -54,3 +54,18 @@ async def test_message_is_retried_until_max_retries_exceeded(
     end_time = clock.now()
     time_delta = end_time - start_time
     assert time_delta.total_seconds() == backoff_seconds * max_retries
+
+
+async def test_zero_retries_does_not_prevent_sending(
+    amqp_connection: AbstractRobustConnection,
+    clock: Clock,
+    sample_message: Message,
+    max_retries: int = 0,
+    pipe: str = "test",
+) -> None:
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe)
+        success = await send_with_backoff(
+            channel, sample_message, pipe, max_retries=max_retries, clock=clock
+        )
+    assert success
