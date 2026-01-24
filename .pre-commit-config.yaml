@@ -10,7 +10,7 @@ repos:
         always_run: true
       - id: ruff
         name: ruff
-        entry: "ruff check ."
+        entry: "ruff format ."
         language: system
         pass_filenames: false
         always_run: true

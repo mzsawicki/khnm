@@ -8,7 +8,7 @@ async def test_message_is_published_when_pipe_max_size_not_exceeded(
     amqp_connection: AbstractRobustConnection,
     sample_message: Message,
     pipe: str = "test",
-    pipe_size: int = 4
+    pipe_size: int = 4,
 ) -> None:
     async with amqp_connection.channel() as channel:
         await declare_pipe(channel, pipe, pipe_size)
@@ -20,7 +20,7 @@ async def test_message_is_rejected_if_pipe_max_size_exceeded(
     amqp_connection: AbstractRobustConnection,
     sample_message: Message,
     pipe: str = "test",
-    pipe_size: int = 4
+    pipe_size: int = 4,
 ) -> None:
     async with amqp_connection.channel() as channel:
         await declare_pipe(channel, pipe, pipe_size)
