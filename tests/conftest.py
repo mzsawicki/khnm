@@ -1,3 +1,4 @@
+import datetime
 from typing import Generator, AsyncGenerator
 
 import pytest
@@ -8,6 +9,7 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.rabbitmq import RabbitMqContainer
 
 from src.khnm.config import KhnmSettings
+from tests.doubles import TestClock
 from tests.utils import create_vhost, delete_vhost
 
 
@@ -70,3 +72,8 @@ async def amqp_connection(
 @pytest.fixture(scope="session")
 def sample_message() -> Message:
     return Message("Hello world".encode("utf-8"))
+
+
+@pytest.fixture(scope="function")
+def clock() -> TestClock:
+    return TestClock(datetime.datetime(2026, 1, 25, 0, 0, 0))

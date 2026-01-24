@@ -4,6 +4,7 @@ from aio_pika import Message
 from aio_pika.abc import ExchangeType, AbstractChannel
 from aiormq import DeliveryError
 
+from src.khnm.time import Clock, LocalTimeClock
 from src.khnm.types import Success
 
 
@@ -46,3 +47,21 @@ async def send_message(
             return False
         raise
     return True
+
+
+async def send_with_backoff(
+    channel: AbstractChannel,
+    message: Message,
+    pipe: str,
+    backoff_seconds: float = 0.1,
+    max_retries: int = 0,
+    clock: Clock = LocalTimeClock(),
+) -> Success:
+    sent = False
+    retries = 0
+    while not sent and retries < max_retries:
+        sent = await send_message(channel, message, pipe)
+        if not sent:
+            await clock.sleep(backoff_seconds)
+            retries += 1
+    return sent
