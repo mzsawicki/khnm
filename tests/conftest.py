@@ -8,7 +8,7 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from src.khnm.config import KhnmSettings
+from khnm.config import KhnmSettings
 from tests.doubles import TestClock
 from tests.utils import create_vhost, delete_vhost
 

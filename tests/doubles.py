@@ -3,7 +3,7 @@ import datetime
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel
 
-from src.khnm.types import SuccessT
+from khnm.types import SuccessT
 
 
 class TestClock:

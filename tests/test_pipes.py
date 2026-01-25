@@ -4,8 +4,8 @@ import pytest
 from aio_pika import Message
 from aio_pika.abc import AbstractRobustConnection
 
-from src.khnm.time import Clock
-from src.khnm.pipes import declare_pipe, send_message, send_with_backoff
+from khnm.time import Clock
+from khnm.pipes import declare_pipe, send_message, send_with_backoff
 from tests.doubles import FailingMessageSender
 
 

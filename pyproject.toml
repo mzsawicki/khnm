@@ -28,3 +28,8 @@ asyncio_default_test_loop_scope = "session"
 filterwarnings = [
     "ignore::DeprecationWarning:testcontainers.*",
 ]
+pythonpath = ["src"]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/my_library"]

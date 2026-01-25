@@ -4,9 +4,9 @@ from aio_pika import Message
 from aio_pika.abc import ExchangeType, AbstractChannel
 from aiormq import DeliveryError
 
-from src.khnm.types import SenderT
-from src.khnm.time import Clock, LocalTimeClock
-from src.khnm.types import SuccessT
+from khnm.types import SenderT
+from khnm.time import Clock, LocalTimeClock
+from khnm.types import SuccessT
 
 
 def get_exchange_name(pipe_name: str) -> str:
