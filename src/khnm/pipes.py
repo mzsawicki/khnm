@@ -2,10 +2,11 @@ import random
 from typing import Optional
 
 from aio_pika import Message
-from aio_pika.abc import ExchangeType, AbstractChannel
-from aiormq import DeliveryError
+from aio_pika.abc import ExchangeType, AbstractChannel, AbstractQueue
+from aiormq import DeliveryError, ChannelNotFoundEntity
+from aiormq.tools import awaitable
 
-from khnm.types import SenderT
+from khnm.types import SenderT, QueueGetterT
 from khnm.time import Clock, LocalTimeClock
 from khnm.types import SuccessT
 
@@ -87,3 +88,40 @@ async def send_with_backoff(
                 await clock.sleep(wait_time_seconds)
                 retries += 1
     return sent
+
+
+async def get_queue(channel: AbstractChannel, queue: str) -> AbstractQueue:
+    return await channel.get_queue(queue)
+
+
+async def wait_for_pipe(
+    channel: AbstractChannel,
+    pipe: str,
+    backoff_seconds: float = 0.1,
+    max_retries: Optional[int] = None,
+    clock: Clock = LocalTimeClock(),
+    getter: QueueGetterT = get_queue,
+) -> SuccessT:
+    success = False
+    retries = 0
+    if max_retries is None:
+        while True:
+            try:
+                await getter(channel, get_queue_name(pipe))
+                return True
+            except ChannelNotFoundEntity:
+                await clock.sleep(backoff_seconds)
+    if max_retries == 0:
+        try:
+            await getter(channel, get_queue_name(pipe))
+            return True
+        except ChannelNotFoundEntity:
+            return False
+    while not success and retries < max_retries:
+        try:
+            await getter(channel, get_queue_name(pipe))
+            success = True
+        except ChannelNotFoundEntity:
+            retries += 1
+            await clock.sleep(backoff_seconds)
+    return success

@@ -1,7 +1,8 @@
 import datetime
 
 from aio_pika import Message
-from aio_pika.abc import AbstractChannel
+from aio_pika.abc import AbstractChannel, AbstractQueue
+from aiormq import ChannelNotFoundEntity
 
 from khnm.time import Clock
 from khnm.types import SuccessT
@@ -30,3 +31,15 @@ class FailingMessageSender:
             self._current_fails += 1
             return False
         return True
+
+
+class FailingQueueGetter:
+    def __init__(self, fails_count: int) -> None:
+        self._fails_count = fails_count
+        self._current_fails = 0
+
+    async def __call__(self, channel: AbstractChannel, queue: str) -> AbstractQueue:
+        if self._current_fails < self._fails_count:
+            self._current_fails += 1
+            raise ChannelNotFoundEntity()
+        return await channel.get_queue(queue)

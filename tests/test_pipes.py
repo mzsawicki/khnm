@@ -5,8 +5,9 @@ from aio_pika import Message
 from aio_pika.abc import AbstractRobustConnection
 
 from khnm.time import Clock
-from khnm.pipes import declare_pipe, send_message, send_with_backoff
-from tests.doubles import FailingMessageSender, FakeClock
+from khnm.pipes import declare_pipe, send_message, send_with_backoff, wait_for_pipe
+from khnm.types import QueueGetterT
+from tests.doubles import FailingMessageSender, FakeClock, FailingQueueGetter
 
 
 @pytest.mark.parametrize("pipe_size", [None, 1, 4, 1024])
@@ -238,3 +239,59 @@ async def test_jitter_randomizes_backoff_times(
         )
 
     assert clock_1.time != clock_2.time
+
+
+async def test_waiting_for_pipe_returns_true_when_queue_exists(
+    amqp_connection: AbstractRobustConnection, pipe: str = "test"
+) -> None:
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe, size=0)
+        success = await wait_for_pipe(channel, pipe, max_retries=0)
+    assert success
+
+
+async def test_waiting_for_pipe_fails_if_pipe_not_declared(
+    amqp_connection: AbstractRobustConnection, pipe: str = "test", max_retries: int = 0
+) -> None:
+    async with amqp_connection.channel() as channel:
+        success = await wait_for_pipe(channel, pipe, max_retries=max_retries)
+    assert not success
+
+
+@pytest.mark.parametrize("max_retries", [0, 1, 3, 4, 16, 32, 64, 1024])
+async def test_waiting_for_pipe_retries_until_max_retries(
+    amqp_connection: AbstractRobustConnection,
+    max_retries: int,
+    clock: Clock,
+    queue_getter: QueueGetterT = FailingQueueGetter(9999),
+    pipe: str = "test",
+    backoff_seconds: float = 1.0,
+) -> None:
+    start_time = clock.now()
+    async with amqp_connection.channel() as channel:
+        await wait_for_pipe(
+            channel,
+            pipe,
+            backoff_seconds=backoff_seconds,
+            max_retries=max_retries,
+            clock=clock,
+            getter=queue_getter,
+        )
+    end_time = clock.now()
+    time_delta = end_time - start_time
+    seconds_passed = time_delta.total_seconds()
+    assert seconds_passed == backoff_seconds * max_retries
+
+
+async def test_if_no_max_retries_pipe_is_waited_for_infinitely(
+    amqp_connection: AbstractRobustConnection,
+    clock: Clock,
+    queue_getter: QueueGetterT = FailingQueueGetter(9999),
+    pipe: str = "test",
+) -> None:
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe, size=0)
+        success = await wait_for_pipe(
+            channel, pipe, clock=clock, max_retries=None, getter=queue_getter
+        )
+    assert success
