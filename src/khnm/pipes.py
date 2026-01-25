@@ -4,7 +4,6 @@ from typing import Optional
 from aio_pika import Message
 from aio_pika.abc import ExchangeType, AbstractChannel, AbstractQueue
 from aiormq import DeliveryError, ChannelNotFoundEntity
-from aiormq.tools import awaitable
 
 from khnm.types import SenderT, QueueGetterT
 from khnm.time import Clock, LocalTimeClock
