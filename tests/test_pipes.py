@@ -54,10 +54,9 @@ async def test_message_is_retried_until_max_retries_exceeded(
             send_message,
             sample_message,
             pipe,
-            backoff_seconds,
-            max_retries,
-            False,
-            clock,
+            backoff_seconds=backoff_seconds,
+            max_retries=max_retries,
+            clock=clock,
         )
     end_time = clock.now()
     time_delta = end_time - start_time
@@ -134,6 +133,50 @@ async def test_exponential_backoff_waits_correct_times(
             backoff_seconds=initial_backoff_seconds,
             max_retries=max_retries,
             exponential_backoff=True,
+            clock=clock,
+        )
+    end_time = clock.now()
+    time_delta = end_time - start_time
+    assert time_delta.total_seconds() == expected_backoff_sum
+
+
+@pytest.mark.parametrize(
+    "max_retries,expected_backoff_sum",
+    [
+        (1, 1),
+        (2, 3),
+        (3, 7),
+        (4, 15),
+        (5, 31),
+        (6, 63),
+        (7, 123),
+        (8, 183),
+        (9, 243),
+        (10, 303),
+    ],
+)
+async def test_max_backoff_cuts_out_exponential_backoff_time(
+    amqp_connection: AbstractRobustConnection,
+    clock: Clock,
+    sample_message: Message,
+    max_retries: int,
+    expected_backoff_sum: float,
+    initial_backoff_seconds: float = 1.0,
+    max_backoff_seconds: float = 60,
+    pipe: str = "test",
+) -> None:
+    start_time = clock.now()
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe, size=0)
+        await send_with_backoff(
+            channel,
+            send_message,
+            sample_message,
+            pipe,
+            backoff_seconds=initial_backoff_seconds,
+            max_retries=max_retries,
+            exponential_backoff=True,
+            max_backoff_seconds=max_backoff_seconds,
             clock=clock,
         )
     end_time = clock.now()

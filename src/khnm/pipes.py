@@ -58,6 +58,7 @@ async def send_with_backoff(
     backoff_seconds: float = 0.1,
     max_retries: Optional[int] = None,
     exponential_backoff: bool = False,
+    max_backoff_seconds: Optional[float] = None,
     clock: Clock = LocalTimeClock(),
 ) -> SuccessT:
     retries = 0
@@ -74,6 +75,11 @@ async def send_with_backoff(
                     if not exponential_backoff
                     else backoff_seconds * pow(2, retries)
                 )
+                if (
+                    max_backoff_seconds is not None
+                    and wait_time_seconds > max_backoff_seconds
+                ):
+                    wait_time_seconds = max_backoff_seconds
                 await clock.sleep(wait_time_seconds)
                 retries += 1
     return sent
