@@ -102,24 +102,57 @@ async def wait_for_pipe(
     clock: Clock = LocalTimeClock(),
     getter: QueueGetterT = get_queue,
 ) -> SuccessT:
-    success = False
-    retries = 0
+    queue = get_queue_name(pipe)
     if max_retries is None:
-        while True:
-            try:
-                await getter(channel, get_queue_name(pipe))
-                return True
-            except ChannelNotFoundEntity:
-                await clock.sleep(backoff_seconds)
-    if max_retries == 0:
+        return await _wait_for_queue_infinitely(
+            channel, queue, backoff_seconds, clock, getter
+        )
+    elif max_retries == 0:
+        return await _check_for_queue_once(channel, queue, getter)
+    else:
+        return await _wait_for_queue_with_backoff(
+            channel, queue, max_retries, backoff_seconds, clock, getter
+        )
+
+
+async def _wait_for_queue_infinitely(
+    channel: AbstractChannel,
+    queue: str,
+    backoff_seconds: float,
+    clock: Clock,
+    getter: QueueGetterT,
+) -> SuccessT:
+    while True:
         try:
-            await getter(channel, get_queue_name(pipe))
+            await getter(channel, queue)
             return True
         except ChannelNotFoundEntity:
-            return False
+            await clock.sleep(backoff_seconds)
+
+
+async def _check_for_queue_once(
+    channel: AbstractChannel, queue: str, getter: QueueGetterT
+) -> SuccessT:
+    try:
+        await getter(channel, queue)
+    except ChannelNotFoundEntity:
+        return False
+    return True
+
+
+async def _wait_for_queue_with_backoff(
+    channel: AbstractChannel,
+    queue: str,
+    max_retries: int,
+    backoff_seconds: float,
+    clock: Clock,
+    getter: QueueGetterT,
+) -> SuccessT:
+    success = False
+    retries = 0
     while not success and retries < max_retries:
         try:
-            await getter(channel, get_queue_name(pipe))
+            await getter(channel, queue)
             success = True
         except ChannelNotFoundEntity:
             retries += 1
