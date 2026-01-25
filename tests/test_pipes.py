@@ -1,4 +1,3 @@
-import asyncio
 from typing import Optional
 
 import pytest
@@ -7,6 +6,7 @@ from aio_pika.abc import AbstractRobustConnection
 
 from src.khnm.time import Clock
 from src.khnm.pipes import declare_pipe, send_message, send_with_backoff
+from tests.doubles import FailingMessageSender
 
 
 @pytest.mark.parametrize("pipe_size", [None, 1, 4, 1024])
@@ -79,5 +79,20 @@ async def test_zero_retries_does_not_prevent_sending(
             pipe,
             max_retries=max_retries,
             clock=clock,
+        )
+    assert success
+
+
+async def test_no_max_retries_allow_infinite_backoff(
+    amqp_connection: AbstractRobustConnection,
+    clock: Clock,
+    sample_message: Message,
+    sender=FailingMessageSender(fails_count=999999),
+    pipe: str = "test",
+) -> None:
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe)
+        success = await send_with_backoff(
+            channel, sender, sample_message, pipe, max_retries=None, clock=clock
         )
     assert success

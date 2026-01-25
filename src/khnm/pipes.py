@@ -1,12 +1,12 @@
-from collections.abc import Callable, Awaitable
 from typing import Optional
 
 from aio_pika import Message
 from aio_pika.abc import ExchangeType, AbstractChannel
 from aiormq import DeliveryError
 
+from src.khnm.types import SenderT
 from src.khnm.time import Clock, LocalTimeClock
-from src.khnm.types import Success
+from src.khnm.types import SuccessT
 
 
 def get_exchange_name(pipe_name: str) -> str:
@@ -39,7 +39,7 @@ async def declare_pipe(
 
 async def send_message(
     channel: AbstractChannel, message: Message, pipe: str
-) -> Success:
+) -> SuccessT:
     exchange = await channel.get_exchange(get_exchange_name(pipe), ensure=False)
     try:
         await exchange.publish(message, routing_key=get_queue_name(pipe))
@@ -52,18 +52,22 @@ async def send_message(
 
 async def send_with_backoff(
     channel: AbstractChannel,
-    sender: Callable[[AbstractChannel, Message, str], Awaitable[Success]],
+    sender: SenderT,
     message: Message,
     pipe: str,
     backoff_seconds: float = 0.1,
-    max_retries: int = 0,
+    max_retries: Optional[int] = None,
     clock: Clock = LocalTimeClock(),
-) -> Success:
+) -> SuccessT:
     retries = 0
     sent = await sender(channel, message, pipe)
-    while not sent and retries < max_retries:
-        sent = await sender(channel, message, pipe)
-        if not sent:
-            await clock.sleep(backoff_seconds)
-            retries += 1
+    if max_retries is None:
+        while not sent:
+            sent = await sender(channel, message, pipe)
+    else:
+        while not sent and retries < max_retries:
+            sent = await sender(channel, message, pipe)
+            if not sent:
+                await clock.sleep(backoff_seconds)
+                retries += 1
     return sent
