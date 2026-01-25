@@ -57,6 +57,7 @@ async def send_with_backoff(
     pipe: str,
     backoff_seconds: float = 0.1,
     max_retries: Optional[int] = None,
+    exponential_backoff: bool = False,
     clock: Clock = LocalTimeClock(),
 ) -> SuccessT:
     retries = 0
@@ -68,6 +69,11 @@ async def send_with_backoff(
         while not sent and retries < max_retries:
             sent = await sender(channel, message, pipe)
             if not sent:
-                await clock.sleep(backoff_seconds)
+                wait_time_seconds = (
+                    backoff_seconds
+                    if not exponential_backoff
+                    else backoff_seconds * pow(2, retries)
+                )
+                await clock.sleep(wait_time_seconds)
                 retries += 1
     return sent
