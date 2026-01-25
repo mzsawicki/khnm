@@ -9,7 +9,7 @@ class Clock(Protocol):
     async def sleep(self, time_seconds: float) -> None: ...
 
 
-class LocalTimeClock:
+class LocalTimeClock(Clock):
     def now(self) -> datetime.datetime:
         return datetime.datetime.now()
 
