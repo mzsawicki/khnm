@@ -1,3 +1,4 @@
+from collections.abc import Callable, Awaitable
 from typing import Optional
 
 from aio_pika import Message
@@ -51,6 +52,7 @@ async def send_message(
 
 async def send_with_backoff(
     channel: AbstractChannel,
+    sender: Callable[[AbstractChannel, Message, str], Awaitable[Success]],
     message: Message,
     pipe: str,
     backoff_seconds: float = 0.1,
@@ -58,9 +60,9 @@ async def send_with_backoff(
     clock: Clock = LocalTimeClock(),
 ) -> Success:
     retries = 0
-    sent = await send_message(channel, message, pipe)
+    sent = await sender(channel, message, pipe)
     while not sent and retries < max_retries:
-        sent = await send_message(channel, message, pipe)
+        sent = await sender(channel, message, pipe)
         if not sent:
             await clock.sleep(backoff_seconds)
             retries += 1

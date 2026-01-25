@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 import pytest
@@ -49,7 +50,13 @@ async def test_message_is_retried_until_max_retries_exceeded(
     async with amqp_connection.channel() as channel:
         await declare_pipe(channel, pipe, size=0)
         await send_with_backoff(
-            channel, sample_message, pipe, backoff_seconds, max_retries, clock
+            channel,
+            send_message,
+            sample_message,
+            pipe,
+            backoff_seconds,
+            max_retries,
+            clock,
         )
     end_time = clock.now()
     time_delta = end_time - start_time
@@ -66,6 +73,11 @@ async def test_zero_retries_does_not_prevent_sending(
     async with amqp_connection.channel() as channel:
         await declare_pipe(channel, pipe)
         success = await send_with_backoff(
-            channel, sample_message, pipe, max_retries=max_retries, clock=clock
+            channel,
+            send_message,
+            sample_message,
+            pipe,
+            max_retries=max_retries,
+            clock=clock,
         )
     assert success
