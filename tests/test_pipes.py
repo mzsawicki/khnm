@@ -184,12 +184,27 @@ async def test_max_backoff_cuts_out_exponential_backoff_time(
     assert time_delta.total_seconds() == expected_backoff_sum
 
 
+@pytest.mark.parametrize(
+    "max_retries,initial_backoff_seconds",
+    [
+        (1, 1),
+        (2, 3),
+        (3, 7),
+        (4, 15),
+        (5, 31),
+        (6, 63),
+        (7, 123),
+        (8, 183),
+        (9, 243),
+        (10, 303),
+    ],
+)
 async def test_jitter_randomizes_backoff_times(
     amqp_connection: AbstractRobustConnection,
     clock: Clock,
     sample_message: Message,
-    max_retries: int = 10,
-    initial_backoff_seconds: float = 1.0,
+    max_retries: int,
+    initial_backoff_seconds: float,
     pipe: str = "test",
 ) -> None:
     clock_1 = FakeClock(clock.now())
