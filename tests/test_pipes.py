@@ -6,7 +6,7 @@ from aio_pika.abc import AbstractRobustConnection
 
 from khnm.time import Clock
 from khnm.pipes import declare_pipe, send_message, send_with_backoff
-from tests.doubles import FailingMessageSender
+from tests.doubles import FailingMessageSender, FakeClock
 
 
 @pytest.mark.parametrize("pipe_size", [None, 1, 4, 1024])
@@ -182,3 +182,44 @@ async def test_max_backoff_cuts_out_exponential_backoff_time(
     end_time = clock.now()
     time_delta = end_time - start_time
     assert time_delta.total_seconds() == expected_backoff_sum
+
+
+async def test_jitter_randomizes_backoff_times(
+    amqp_connection: AbstractRobustConnection,
+    clock: Clock,
+    sample_message: Message,
+    max_retries: int = 10,
+    initial_backoff_seconds: float = 1.0,
+    pipe: str = "test",
+) -> None:
+    clock_1 = FakeClock(clock.now())
+    clock_2 = FakeClock(clock.now())
+
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe, size=0)
+
+        await send_with_backoff(
+            channel,
+            send_message,
+            sample_message,
+            pipe,
+            backoff_seconds=initial_backoff_seconds,
+            exponential_backoff=True,
+            max_retries=max_retries,
+            apply_jitter=True,
+            clock=clock_1,
+        )
+
+        await send_with_backoff(
+            channel,
+            send_message,
+            sample_message,
+            pipe,
+            backoff_seconds=initial_backoff_seconds,
+            exponential_backoff=True,
+            max_retries=max_retries,
+            apply_jitter=True,
+            clock=clock_2,
+        )
+
+    assert clock_1.time != clock_2.time

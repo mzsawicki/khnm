@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 
 from aio_pika import Message
@@ -59,6 +60,7 @@ async def send_with_backoff(
     max_retries: Optional[int] = None,
     exponential_backoff: bool = False,
     max_backoff_seconds: Optional[float] = None,
+    apply_jitter: bool = False,
     clock: Clock = LocalTimeClock(),
 ) -> SuccessT:
     retries = 0
@@ -80,6 +82,8 @@ async def send_with_backoff(
                     and wait_time_seconds > max_backoff_seconds
                 ):
                     wait_time_seconds = max_backoff_seconds
+                if apply_jitter:
+                    wait_time_seconds = random.uniform(0, wait_time_seconds)
                 await clock.sleep(wait_time_seconds)
                 retries += 1
     return sent

@@ -9,7 +9,7 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 from testcontainers.rabbitmq import RabbitMqContainer
 
 from khnm.config import KhnmSettings
-from tests.doubles import TestClock
+from tests.doubles import FakeClock
 from tests.utils import create_vhost, delete_vhost
 
 
@@ -75,5 +75,5 @@ def sample_message() -> Message:
 
 
 @pytest.fixture(scope="function")
-def clock() -> TestClock:
-    return TestClock(datetime.datetime(2026, 1, 25, 0, 0, 0))
+def clock() -> FakeClock:
+    return FakeClock(datetime.datetime(2026, 1, 25, 0, 0, 0))
