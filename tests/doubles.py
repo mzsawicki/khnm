@@ -1,11 +1,12 @@
 import datetime
 
+import pydantic
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractQueue
 from aiormq import ChannelNotFoundEntity
 
 from khnm.time import Clock
-from khnm.types import SuccessT
+from khnm.types import SuccessT, CallbackOutputT, CallbackInputT
 
 
 class FakeClock(Clock):
@@ -43,3 +44,20 @@ class FailingQueueGetter:
             self._current_fails += 1
             raise ChannelNotFoundEntity()
         return await channel.get_queue(queue)
+
+
+class DataObjectStub(pydantic.BaseModel):
+    text: str = "Hello World"
+
+
+class SyncProcessorSpy:
+    def __init__(self):
+        self._calls_count = 0
+
+    def __call__(self, obj: CallbackInputT) -> CallbackOutputT:
+        self._calls_count += 1
+        return DataObjectStub()
+
+    @property
+    def calls_count(self) -> int:
+        return self._calls_count

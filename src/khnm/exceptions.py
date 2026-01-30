@@ -1,0 +1,2 @@
+class UpstreamPipeUnavailable(Exception):
+    pass
