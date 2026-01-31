@@ -4,7 +4,7 @@ from aio_pika.abc import AbstractRobustConnection
 
 from khnm.pipes import get_queue_name
 from khnm.producers import make_producer
-from tests.doubles import FailingMessageSender, RaisingMessageSender
+from tests.doubles import RaisingMessageSender
 from tests.utils import get_queue_messages_count
 
 

@@ -1,4 +1,7 @@
 import datetime
+import decimal
+import uuid
+from decimal import Decimal
 
 import pydantic
 from aio_pika import Message
@@ -53,8 +56,18 @@ class FailingQueueGetter:
         return await channel.get_queue(queue)
 
 
-class DataObjectStub(pydantic.BaseModel):
+class SampleNestedObject(pydantic.BaseModel):
+    text: str = "Nested object"
+
+
+class SampleDataObject(pydantic.BaseModel):
+    guid: uuid.UUID = uuid.uuid4()
     text: str = "Hello World"
+    time: datetime.datetime = datetime.datetime(2026, 1, 1, 12, 34, 56)
+    integer: int = 1
+    float_: float = 3.14
+    decimal_: Decimal = Decimal(1.234)
+    obj: SampleNestedObject = SampleNestedObject()
 
 
 class SyncProcessorSpy:
@@ -63,7 +76,7 @@ class SyncProcessorSpy:
 
     def __call__(self, obj: CallbackInputT) -> CallbackOutputT:
         self._calls_count += 1
-        return DataObjectStub()
+        return SampleDataObject()
 
     @property
     def calls_count(self) -> int:
