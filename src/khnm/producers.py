@@ -6,10 +6,13 @@ from aio_pika.abc import AbstractRobustConnection, AbstractChannel
 
 from khnm.pipes import declare_pipe, send_with_backoff, send_message
 from khnm.time import Clock, LocalTimeClock
+from khnm.types import SenderT
 
 
 class Producer(Protocol):
     async def publish(self, message: Message) -> None: ...
+    @property
+    def is_closed(self) -> bool: ...
 
 
 class AmqpProducer(Producer):
@@ -23,6 +26,7 @@ class AmqpProducer(Producer):
         max_backoff_seconds: Optional[float] = None,
         apply_jitter: bool = False,
         clock: Clock = LocalTimeClock(),
+        sender: SenderT = send_message,
     ) -> None:
         self._channel = channel
         self._pipe = pipe
@@ -32,11 +36,12 @@ class AmqpProducer(Producer):
         self._max_backoff_seconds = max_backoff_seconds
         self._apply_jitter = apply_jitter
         self._clock = clock
+        self._sender = sender
 
     async def publish(self, message: Message) -> None:
         await send_with_backoff(
             channel=self._channel,
-            sender=send_message,
+            sender=self._sender,
             message=message,
             pipe=self._pipe,
             backoff_seconds=self._backoff_seconds,
@@ -46,6 +51,10 @@ class AmqpProducer(Producer):
             apply_jitter=self._apply_jitter,
             clock=self._clock,
         )
+
+    @property
+    def is_closed(self) -> bool:
+        return self._channel.is_closed
 
 
 @asynccontextmanager
@@ -60,17 +69,21 @@ async def make_producer(
     max_backoff_seconds: Optional[float] = None,
     apply_jitter: bool = False,
     clock: Clock = LocalTimeClock(),
+    sender: SenderT = send_message,
 ) -> AsyncGenerator[Producer, None]:
     channel = await amqp_connection.channel()
     await declare_pipe(channel=channel, name=pipe, size=size, durable=durable)
-    yield AmqpProducer(
-        channel=channel,
-        pipe=pipe,
-        backoff_seconds=backoff_seconds,
-        max_retries=max_retries,
-        exponential_backoff=exponential_backoff,
-        max_backoff_seconds=max_backoff_seconds,
-        apply_jitter=apply_jitter,
-        clock=clock,
-    )
-    await channel.close()
+    try:
+        yield AmqpProducer(
+            channel=channel,
+            pipe=pipe,
+            backoff_seconds=backoff_seconds,
+            max_retries=max_retries,
+            exponential_backoff=exponential_backoff,
+            max_backoff_seconds=max_backoff_seconds,
+            apply_jitter=apply_jitter,
+            clock=clock,
+            sender=sender,
+        )
+    finally:
+        await channel.close()

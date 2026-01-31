@@ -34,6 +34,13 @@ class FailingMessageSender:
         return True
 
 
+class RaisingMessageSender:
+    async def __call__(
+        self, channel: AbstractChannel, message: Message, pipe: str
+    ) -> SuccessT:
+        raise Exception()
+
+
 class FailingQueueGetter:
     def __init__(self, fails_count: int) -> None:
         self._fails_count = fails_count
