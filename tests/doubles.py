@@ -2,6 +2,7 @@ import datetime
 import decimal
 import uuid
 from decimal import Decimal
+from typing import AsyncGenerator, Generator, Optional
 
 import pydantic
 from aio_pika import Message
@@ -81,3 +82,30 @@ class SyncProcessorSpy:
     @property
     def calls_count(self) -> int:
         return self._calls_count
+
+
+async def generate_random_numbers_async(count: int = 10) -> AsyncGenerator[SampleDataObject, None]:
+    for i in range(count):
+        yield SampleDataObject(integer=i)
+
+
+def generate_random_numbers_sync(count: int = 10) -> Generator[SampleDataObject, None, None]:
+    for i in range(count):
+        yield SampleDataObject(integer=i)
+
+
+async def async_callback_stub(obj: CallbackInputT) -> CallbackOutputT:
+    return obj
+
+
+class AsyncCallbackSpy:
+    def __init__(self):
+        self._received_obj: Optional[CallbackInputT] = None
+
+    async def __call__(self, obj: CallbackInputT) -> CallbackOutputT:
+        self._received_obj = obj
+        return obj
+
+    @property
+    def received_obj(self) -> Optional[CallbackInputT]:
+        return self._received_obj

@@ -1,5 +1,8 @@
+from typing import Union
+
 import pydantic
 from aio_pika import Message
+from aio_pika.abc import AbstractIncomingMessage
 
 from khnm.types import MessageObjectT
 
@@ -12,7 +15,7 @@ def pydantic_model_to_message(
 
 
 def message_to_pydantic_model(
-    message: Message, model_class: type[MessageObjectT]
+    message: Union[Message, AbstractIncomingMessage], model_class: type[MessageObjectT]
 ) -> MessageObjectT:
     decoded = message.body.decode("utf-8")
     obj = model_class.model_validate_json(decoded)
