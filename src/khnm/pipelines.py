@@ -49,12 +49,10 @@ class Source(Runner):
             await self._run_sync()
 
     async def _run_async(self) -> None:
-        while True:
-            await self._run_async_callback()
+        await self._run_async_callback()
 
     async def _run_sync(self) -> None:
-        while True:
-            await self._run_sync_callback()
+        await self._run_sync_callback()
 
     async def _run_async_callback(self) -> None:
         async with make_producer(self._connection, self._downstream_pipe) as producer:
@@ -77,13 +75,12 @@ class Node(Runner):
         connection: AbstractRobustConnection,
         name: str,
         upstream_pipe: str,
-        downstream_pipe: str,
         callback: CallbackT
     ) -> None:
         self._connection = connection
         self._name = name
         self._upstream_pipe = upstream_pipe
-        self._downstream_pipe = downstream_pipe
+        self._downstream_pipe = name
         self._callback = callback
 
     @property
@@ -227,7 +224,6 @@ class PipelineBuilder:
                 connection=self._connection,
                 name=current_node_definition.name,
                 upstream_pipe=previous_node_definition.name,
-                downstream_pipe=next_node_definition.name,
                 callback=current_node_definition.callback
             ))
             previous_node_definition = current_node_definition
