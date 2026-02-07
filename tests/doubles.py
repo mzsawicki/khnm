@@ -84,12 +84,16 @@ class SyncProcessorSpy:
         return self._calls_count
 
 
-async def generate_random_numbers_async(count: int = 10) -> AsyncGenerator[SampleDataObject, None]:
+async def generate_random_numbers_async(
+    count: int = 10,
+) -> AsyncGenerator[SampleDataObject, None]:
     for i in range(count):
         yield SampleDataObject(integer=i)
 
 
-def generate_random_numbers_sync(count: int = 10) -> Generator[SampleDataObject, None, None]:
+def generate_random_numbers_sync(
+    count: int = 10,
+) -> Generator[SampleDataObject, None, None]:
     for i in range(count):
         yield SampleDataObject(integer=i)
 

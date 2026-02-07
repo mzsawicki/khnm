@@ -3,12 +3,16 @@ import asyncio
 from aio_pika.abc import AbstractRobustConnection
 
 from khnm.pipelines import PipelineBuilder
-from tests.doubles import generate_random_numbers_async, async_callback_stub, AsyncCallbackSpy
+from tests.doubles import (
+    generate_random_numbers_async,
+    async_callback_stub,
+    AsyncCallbackSpy,
+)
 from tests.utils import timeout
 
 
 async def test_pipeline_sends_messages_source_to_sink(
-    amqp_connection: AbstractRobustConnection
+    amqp_connection: AbstractRobustConnection,
 ) -> None:
     spy = AsyncCallbackSpy()
 
@@ -36,8 +40,9 @@ async def test_pipeline_sends_messages_source_to_sink(
 
     assert success is True
 
+
 async def test_pipeline_with_multiple_intermediate_nodes(
-    amqp_connection: AbstractRobustConnection
+    amqp_connection: AbstractRobustConnection,
 ) -> None:
     spy = AsyncCallbackSpy()
 
@@ -66,4 +71,3 @@ async def test_pipeline_with_multiple_intermediate_nodes(
         task.cancel()
 
     assert success is True
-
