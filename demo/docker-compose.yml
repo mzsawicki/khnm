@@ -1,0 +1,60 @@
+x-worker-base: &worker-base
+  build:
+    context: ..
+    dockerfile: demo/Dockerfile
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+  environment: &worker-env
+    RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    PYTHONUNBUFFERED: 1
+  networks:
+    - app-network
+
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+
+  generator:
+    <<: *worker-base
+    command: ["khnm", "demo.main:pipeline", "generator"]
+
+  splitter:
+    <<: *worker-base
+    command: ["khnm", "demo.main:pipeline", "splitter"]
+
+  sleeper:
+    <<: *worker-base
+    command: ["khnm", "demo.main:pipeline", "sleeper"]
+
+  multiplier:
+    <<: *worker-base
+    command: ["khnm", "demo.main:pipeline", "multiplier"]
+
+  printer:
+   <<: *worker-base
+   command: ["khnm", "demo.main:pipeline", "printer"]
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  app-network:
+    driver: bridge
