@@ -265,6 +265,6 @@ def _is_callback_async(callback: Callable[..., ...]) -> bool:
 
 
 def _is_callback_result_iterable(
-    value: Union[pydantic.BaseModel, Iterable[pydantic.BaseModel]],
+    value: CallbackOutputT,
 ) -> bool:
     return isinstance(value, Iterable) and not isinstance(value, BaseModel)
