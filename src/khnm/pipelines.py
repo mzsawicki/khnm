@@ -192,31 +192,8 @@ class PipelineBuilder:
         self._connection = connection
         self._runner_definitions: List[RunnerDefinition] = []
 
-    def with_source(self, name: str, callback: GeneratorCallbackT) -> Self:
-        self._runner_definitions.append(
-            RunnerDefinition(
-                name=name,
-                callback=callback,
-            )
-        )
-        return self
-
-    def with_node(self, name: str, callback: CallbackT) -> Self:
-        self._runner_definitions.append(
-            RunnerDefinition(
-                name=name,
-                callback=callback,
-            )
-        )
-        return self
-
-    def with_sink(self, name: str, callback: CallbackT) -> Self:
-        self._runner_definitions.append(
-            RunnerDefinition(
-                name=name,
-                callback=callback,
-            )
-        )
+    def add(self, name: str, callback: Union[GeneratorCallbackT, CallbackT]) -> Self:
+        self._runner_definitions.append(RunnerDefinition(name=name, callback=callback))
         return self
 
     def build(self) -> Pipeline:
@@ -266,6 +243,10 @@ class Pipeline:
         if not runner:
             raise ValueError(f"Runner {name} not found in the pipeline")
         await runner.run()
+
+
+def make_pipeline(connection: AbstractRobustConnection) -> PipelineBuilder:
+    return PipelineBuilder(connection)
 
 
 async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:

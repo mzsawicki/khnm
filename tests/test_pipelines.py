@@ -1,10 +1,9 @@
 import asyncio
 from typing import AsyncGenerator, Optional, cast
 
-import pydantic
 from aio_pika.abc import AbstractRobustConnection
 
-from khnm.pipelines import PipelineBuilder
+from khnm.pipelines import make_pipeline
 from tests.doubles import (
     generate_random_numbers_async,
     async_callback_stub,
@@ -20,10 +19,10 @@ async def test_pipeline_sends_messages_source_to_sink(
     spy = AsyncCallbackSpy()
 
     pipeline = (
-        PipelineBuilder(amqp_connection)
-        .with_source("test-source", generate_random_numbers_async)
-        .with_node("test-node", async_callback_stub)
-        .with_sink("test-sink", spy)
+        make_pipeline(amqp_connection)
+        .add("test-source", generate_random_numbers_async)
+        .add("test-node", async_callback_stub)
+        .add("test-sink", spy)
         .build()
     )
 
@@ -50,11 +49,11 @@ async def test_pipeline_with_multiple_intermediate_nodes(
     spy = AsyncCallbackSpy()
 
     pipeline = (
-        PipelineBuilder(amqp_connection)
-        .with_source("test-source", generate_random_numbers_async)
-        .with_node("test-node-1", async_callback_stub)
-        .with_node("test-node-2", async_callback_stub)
-        .with_sink("test-sink", spy)
+        make_pipeline(amqp_connection)
+        .add("test-source", generate_random_numbers_async)
+        .add("test-node-1", async_callback_stub)
+        .add("test-node-2", async_callback_stub)
+        .add("test-sink", spy)
         .build()
     )
 
@@ -91,11 +90,11 @@ async def test_processing_through_pipeline_gives_correct_result(
         return SampleDataObject(integer=obj.integer * 3)
 
     pipeline = (
-        PipelineBuilder(amqp_connection)
-        .with_source("number-source", generate_1)
-        .with_node("add", add)
-        .with_node("multiply", multiply)
-        .with_sink("result", spy)
+        make_pipeline(amqp_connection)
+        .add("number-source", generate_1)
+        .add("add", add)
+        .add("multiply", multiply)
+        .add("result", spy)
         .build()
     )
 
