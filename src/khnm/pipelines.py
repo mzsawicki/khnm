@@ -32,19 +32,17 @@ class Runner(Protocol):
     def name(self) -> str:
         pass
 
-    async def run(self) -> None:
+    async def run(self, connection: AbstractRobustConnection) -> None:
         pass
 
 
 class Source(Runner):
     def __init__(
         self,
-        connection: AbstractRobustConnection,
         name: str,
         downstream_pipe: str,
         callback: GeneratorCallbackT,
     ) -> None:
-        self._connection = connection
         self._name = name
         self._downstream_pipe = downstream_pipe
         self._callback = callback
@@ -53,21 +51,21 @@ class Source(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self) -> None:
+    async def run(self, connection: AbstractRobustConnection) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
-            await self._run_async()
+            await self._run_async(connection)
         else:
-            await self._run_sync()
+            await self._run_sync(connection)
 
-    async def _run_async(self) -> None:
-        await self._run_async_callback()
+    async def _run_async(self, connection: AbstractRobustConnection) -> None:
+        await self._run_async_callback(connection)
 
-    async def _run_sync(self) -> None:
-        await self._run_sync_callback()
+    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
+        await self._run_sync_callback(connection)
 
-    async def _run_async_callback(self) -> None:
-        async with make_producer(self._connection, self._downstream_pipe) as producer:
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async with make_producer(connection, self._downstream_pipe) as producer:
             async for obj in cast(
                 AsyncGenerator[CallbackOutputT, None], self._callback()
             ):
@@ -75,8 +73,8 @@ class Source(Runner):
                 message = pydantic_model_to_message(obj)
                 await producer.publish(message)
 
-    async def _run_sync_callback(self) -> None:
-        async with make_producer(self._connection, self._downstream_pipe) as producer:
+    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+        async with make_producer(connection, self._downstream_pipe) as producer:
             for obj in cast(Generator[CallbackOutputT, None, None], self._callback()):
                 assert isinstance(obj, pydantic.BaseModel)
                 message = pydantic_model_to_message(obj)
@@ -86,13 +84,11 @@ class Source(Runner):
 class Node(Runner):
     def __init__(
         self,
-        connection: AbstractRobustConnection,
         name: str,
         upstream_pipe: str,
         downstream_pipe: str,
         callback: CallbackT,
     ) -> None:
-        self._connection = connection
         self._name = name
         self._upstream_pipe = upstream_pipe
         self._downstream_pipe = downstream_pipe
@@ -102,33 +98,33 @@ class Node(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self) -> None:
+    async def run(self, connection: AbstractRobustConnection) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
-            await self._run_async()
+            await self._run_async(connection)
         else:
-            await self._run_sync()
+            await self._run_sync(connection)
 
-    async def _run_async(self) -> None:
+    async def _run_async(self, connection: AbstractRobustConnection) -> None:
         while True:
-            await self._run_async_callback()
+            await self._run_async_callback(connection)
 
-    async def _run_sync(self) -> None:
+    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
         while True:
-            await self._run_sync_callback()
+            await self._run_sync_callback(connection)
 
-    async def _run_async_callback(self) -> None:
-        async with make_producer(self._connection, self._downstream_pipe) as producer:
-            async for message in consume(self._connection, self._upstream_pipe):
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async with make_producer(connection, self._downstream_pipe) as producer:
+            async for message in consume(connection, self._upstream_pipe):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
-    async def _run_sync_callback(self) -> None:
-        async with make_producer(self._connection, self._downstream_pipe) as producer:
-            async for message in consume(self._connection, self._upstream_pipe):
+    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+        async with make_producer(connection, self._downstream_pipe) as producer:
+            async for message in consume(connection, self._upstream_pipe):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = cast(CallbackOutputT, self._callback(obj))
@@ -139,12 +135,10 @@ class Node(Runner):
 class Sink(Runner):
     def __init__(
         self,
-        connection: AbstractRobustConnection,
         name: str,
         upstream_pipe: str,
         callback: CallbackT,
     ) -> None:
-        self._connection = connection
         self._name = name
         self._upstream_pipe = upstream_pipe
         self._callback = callback
@@ -153,29 +147,29 @@ class Sink(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self) -> None:
+    async def run(self, connection: AbstractRobustConnection) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
-            await self._run_async()
+            await self._run_async(connection)
         else:
-            await self._run_sync()
+            await self._run_sync(connection)
 
-    async def _run_async(self) -> None:
+    async def _run_async(self, connection: AbstractRobustConnection) -> None:
         while True:
-            await self._run_async_callback()
+            await self._run_async_callback(connection)
 
-    async def _run_sync(self) -> None:
+    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
         while True:
-            await self._run_sync_callback()
+            await self._run_sync_callback(connection)
 
-    async def _run_async_callback(self) -> None:
-        async for message in consume(self._connection, self._upstream_pipe):
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async for message in consume(connection, self._upstream_pipe):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
                 await cast(Awaitable[CallbackOutputT], self._callback(obj))
 
-    async def _run_sync_callback(self) -> None:
-        async for message in consume(self._connection, self._upstream_pipe):
+    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+        async for message in consume(connection, self._upstream_pipe):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
                 cast(CallbackOutputT, self._callback(obj))
@@ -188,8 +182,7 @@ class RunnerDefinition:
 
 
 class PipelineBuilder:
-    def __init__(self, connection: AbstractRobustConnection):
-        self._connection = connection
+    def __init__(self):
         self._runner_definitions: List[RunnerDefinition] = []
 
     def add(self, name: str, callback: Union[GeneratorCallbackT, CallbackT]) -> Self:
@@ -202,7 +195,6 @@ class PipelineBuilder:
         next_node_definition = self._runner_definitions.pop(0)
         runners.append(
             Source(
-                connection=self._connection,
                 name=source_definition.name,
                 downstream_pipe=next_node_definition.name,
                 callback=cast(GeneratorCallbackT, source_definition.callback),
@@ -214,7 +206,6 @@ class PipelineBuilder:
             next_node_definition = self._runner_definitions.pop(0)
             runners.append(
                 Node(
-                    connection=self._connection,
                     name=current_node_definition.name,
                     upstream_pipe=current_node_definition.name,
                     downstream_pipe=next_node_definition.name,
@@ -224,7 +215,6 @@ class PipelineBuilder:
             previous_node_definition = current_node_definition
         runners.append(
             Sink(
-                connection=self._connection,
                 name=next_node_definition.name,
                 upstream_pipe=next_node_definition.name,
                 callback=cast(CallbackT, next_node_definition.callback),
@@ -238,15 +228,15 @@ class Pipeline:
         self._runners = runners
         self._runners_map = {runner.name: runner for runner in runners}
 
-    async def run(self, name: str) -> None:
+    async def run(self, connection: AbstractRobustConnection, name: str) -> None:
         runner = self._runners_map.get(name)
         if not runner:
             raise ValueError(f"Runner {name} not found in the pipeline")
-        await runner.run()
+        await runner.run(connection)
 
 
-def make_pipeline(connection: AbstractRobustConnection) -> PipelineBuilder:
-    return PipelineBuilder(connection)
+def make_pipeline() -> PipelineBuilder:
+    return PipelineBuilder()
 
 
 async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:

@@ -19,7 +19,7 @@ async def test_pipeline_sends_messages_source_to_sink(
     spy = AsyncCallbackSpy()
 
     pipeline = (
-        make_pipeline(amqp_connection)
+        make_pipeline()
         .add("test-source", generate_random_numbers_async)
         .add("test-node", async_callback_stub)
         .add("test-sink", spy)
@@ -27,9 +27,9 @@ async def test_pipeline_sends_messages_source_to_sink(
     )
 
     tasks = [
-        asyncio.create_task(pipeline.run("test-source")),
-        asyncio.create_task(pipeline.run("test-node")),
-        asyncio.create_task(pipeline.run("test-sink")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-node")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-sink")),
     ]
 
     async def spy_got_message() -> bool:
@@ -49,7 +49,7 @@ async def test_pipeline_with_multiple_intermediate_nodes(
     spy = AsyncCallbackSpy()
 
     pipeline = (
-        make_pipeline(amqp_connection)
+        make_pipeline()
         .add("test-source", generate_random_numbers_async)
         .add("test-node-1", async_callback_stub)
         .add("test-node-2", async_callback_stub)
@@ -58,10 +58,10 @@ async def test_pipeline_with_multiple_intermediate_nodes(
     )
 
     tasks = [
-        asyncio.create_task(pipeline.run("test-source")),
-        asyncio.create_task(pipeline.run("test-node-1")),
-        asyncio.create_task(pipeline.run("test-node-2")),
-        asyncio.create_task(pipeline.run("test-sink")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-node-1")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-node-2")),
+        asyncio.create_task(pipeline.run(amqp_connection, "test-sink")),
     ]
 
     async def spy_got_message() -> bool:
@@ -90,7 +90,7 @@ async def test_processing_through_pipeline_gives_correct_result(
         return SampleDataObject(integer=obj.integer * 3)
 
     pipeline = (
-        make_pipeline(amqp_connection)
+        make_pipeline()
         .add("number-source", generate_1)
         .add("add", add)
         .add("multiply", multiply)
@@ -99,10 +99,10 @@ async def test_processing_through_pipeline_gives_correct_result(
     )
 
     tasks = [
-        asyncio.create_task(pipeline.run("number-source")),
-        asyncio.create_task(pipeline.run("add")),
-        asyncio.create_task(pipeline.run("multiply")),
-        asyncio.create_task(pipeline.run("result")),
+        asyncio.create_task(pipeline.run(amqp_connection, "number-source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "add")),
+        asyncio.create_task(pipeline.run(amqp_connection, "multiply")),
+        asyncio.create_task(pipeline.run(amqp_connection, "result")),
     ]
 
     async def get_result_from_spy() -> Optional[int]:
