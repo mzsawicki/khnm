@@ -18,7 +18,7 @@ from aio_pika.abc import AbstractRobustConnection
 from pydantic import BaseModel
 
 from khnm.consumers import consume
-from khnm.producers import make_producer
+from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
 from khnm.types import GeneratorCallbackT, CallbackT, CallbackOutputT
 
@@ -122,43 +122,16 @@ class Node(Runner):
             async for message in consume(self._connection, self._upstream_pipe):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
-                    assert isinstance(obj, pydantic.BaseModel)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
-                    if isinstance(result, Iterable) and not isinstance(
-                        result, (str, bytes, BaseModel)
-                    ):
-                        results_serialized = [
-                            pydantic_model_to_message(item)
-                            for item in cast(Iterable[BaseModel], result)
-                        ]
-                        for item_serialized in results_serialized:
-                            await producer.publish(item_serialized)
-                    else:
-                        assert isinstance(result, BaseModel)
-                        result_serialized = pydantic_model_to_message(result)
-                        await producer.publish(result_serialized)
+                    await _handle_callback_output(result, producer)
 
     async def _run_sync_callback(self) -> None:
         async with make_producer(self._connection, self._downstream_pipe) as producer:
             async for message in consume(self._connection, self._upstream_pipe):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
-                    assert isinstance(obj, pydantic.BaseModel)
                     result = cast(CallbackOutputT, self._callback(obj))
-                    assert isinstance(result, pydantic.BaseModel)
-                    if isinstance(result, Iterable) and not isinstance(
-                        result, (str, bytes, BaseModel)
-                    ):
-                        results_serialized = [
-                            pydantic_model_to_message(item)
-                            for item in cast(Iterable[BaseModel], result)
-                        ]
-                        for item_serialized in results_serialized:
-                            await producer.publish(item_serialized)
-                    else:
-                        assert isinstance(result, BaseModel)
-                        result_serialized = pydantic_model_to_message(result)
-                        await producer.publish(result_serialized)
+                    await _handle_callback_output(result, producer)
 
 
 class Sink(Runner):
@@ -203,7 +176,7 @@ class Sink(Runner):
         async for message in consume(self._connection, self._upstream_pipe):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
-                self._callback(obj)
+                cast(CallbackOutputT, self._callback(obj))
 
 
 @dataclass(init=True, frozen=True)
@@ -293,6 +266,20 @@ class Pipeline:
         await runner.run()
 
 
+async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:
+    if _is_callback_result_iterable(result):
+        results_serialized = [
+            pydantic_model_to_message(item)
+            for item in cast(Iterable[BaseModel], result)
+        ]
+        for item_serialized in results_serialized:
+            await producer.publish(item_serialized)
+    else:
+        assert isinstance(result, BaseModel)
+        result_serialized = pydantic_model_to_message(result)
+        await producer.publish(result_serialized)
+
+
 def _is_callback_async(callback: Callable[..., ...]) -> bool:
     target = callback
     if not inspect.isfunction(callback) and not inspect.ismethod(callback):
@@ -302,3 +289,9 @@ def _is_callback_async(callback: Callable[..., ...]) -> bool:
             return False
 
     return inspect.iscoroutinefunction(target) or inspect.isasyncgenfunction(target)
+
+
+def _is_callback_result_iterable(
+    value: Union[pydantic.BaseModel, Iterable[pydantic.BaseModel]],
+) -> bool:
+    return isinstance(value, Iterable) and not isinstance(value, BaseModel)
