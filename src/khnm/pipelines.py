@@ -89,12 +89,13 @@ class Node(Runner):
         connection: AbstractRobustConnection,
         name: str,
         upstream_pipe: str,
+        downstream_pipe: str,
         callback: CallbackT,
     ) -> None:
         self._connection = connection
         self._name = name
         self._upstream_pipe = upstream_pipe
-        self._downstream_pipe = name
+        self._downstream_pipe = downstream_pipe
         self._callback = callback
 
     @property
@@ -123,7 +124,9 @@ class Node(Runner):
                     obj = message_to_pydantic_model(current_message, Bag)
                     assert isinstance(obj, pydantic.BaseModel)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
-                    if isinstance(result, Iterable):
+                    if isinstance(result, Iterable) and not isinstance(
+                        result, (str, bytes, BaseModel)
+                    ):
                         results_serialized = [
                             pydantic_model_to_message(item)
                             for item in cast(Iterable[BaseModel], result)
@@ -131,6 +134,7 @@ class Node(Runner):
                         for item_serialized in results_serialized:
                             await producer.publish(item_serialized)
                     else:
+                        assert isinstance(result, BaseModel)
                         result_serialized = pydantic_model_to_message(result)
                         await producer.publish(result_serialized)
 
@@ -141,7 +145,10 @@ class Node(Runner):
                     obj = message_to_pydantic_model(current_message, Bag)
                     assert isinstance(obj, pydantic.BaseModel)
                     result = cast(CallbackOutputT, self._callback(obj))
-                    if isinstance(result, Iterable):
+                    assert isinstance(result, pydantic.BaseModel)
+                    if isinstance(result, Iterable) and not isinstance(
+                        result, (str, bytes, BaseModel)
+                    ):
                         results_serialized = [
                             pydantic_model_to_message(item)
                             for item in cast(Iterable[BaseModel], result)
@@ -149,6 +156,7 @@ class Node(Runner):
                         for item_serialized in results_serialized:
                             await producer.publish(item_serialized)
                     else:
+                        assert isinstance(result, BaseModel)
                         result_serialized = pydantic_model_to_message(result)
                         await producer.publish(result_serialized)
 
@@ -256,7 +264,8 @@ class PipelineBuilder:
                 Node(
                     connection=self._connection,
                     name=current_node_definition.name,
-                    upstream_pipe=previous_node_definition.name,
+                    upstream_pipe=current_node_definition.name,
+                    downstream_pipe=next_node_definition.name,
                     callback=cast(CallbackT, current_node_definition.callback),
                 )
             )
@@ -265,7 +274,7 @@ class PipelineBuilder:
             Sink(
                 connection=self._connection,
                 name=next_node_definition.name,
-                upstream_pipe=previous_node_definition.name,
+                upstream_pipe=next_node_definition.name,
                 callback=cast(CallbackT, next_node_definition.callback),
             )
         )

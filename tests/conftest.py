@@ -18,6 +18,7 @@ def rabbitmq_container() -> Generator[RabbitMqContainer, None, None]:
     with (
         RabbitMqContainer("rabbitmq:management")
         .with_exposed_ports(5672, 15672)
+        .with_bind_ports(15672, 15672)
         .waiting_for(
             LogMessageWaitStrategy("Server startup complete")
         ) as rabbitmq_container
