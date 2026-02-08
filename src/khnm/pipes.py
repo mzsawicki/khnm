@@ -1,7 +1,7 @@
 import random
 from typing import Optional
 
-from aio_pika import Message
+from aio_pika import Message, DeliveryMode
 from aio_pika.abc import ExchangeType, AbstractChannel, AbstractQueue
 from aiormq import DeliveryError, ChannelNotFoundEntity
 
@@ -39,8 +39,10 @@ async def declare_pipe(
 
 
 async def send_message(
-    channel: AbstractChannel, message: Message, pipe: str
+    channel: AbstractChannel, message: Message, pipe: str, persistent: bool = False
 ) -> SuccessT:
+    if persistent:
+        message.delivery_mode = DeliveryMode.PERSISTENT
     exchange = await channel.get_exchange(get_exchange_name(pipe), ensure=False)
     try:
         await exchange.publish(message, routing_key=get_queue_name(pipe))
@@ -61,16 +63,17 @@ async def send_with_backoff(
     exponential_backoff: bool = False,
     max_backoff_seconds: Optional[float] = None,
     apply_jitter: bool = False,
+    persistent: bool = False,
     clock: Clock = LocalTimeClock(),
 ) -> SuccessT:
     retries = 0
-    sent = await sender(channel, message, pipe)
+    sent = await sender(channel, message, pipe, persistent)
     if max_retries is None:
         while not sent:
-            sent = await sender(channel, message, pipe)
+            sent = await sender(channel, message, pipe, persistent)
     else:
         while not sent and retries < max_retries:
-            sent = await sender(channel, message, pipe)
+            sent = await sender(channel, message, pipe, persistent)
             if not sent:
                 wait_time_seconds = (
                     backoff_seconds

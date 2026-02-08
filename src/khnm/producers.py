@@ -25,6 +25,7 @@ class AmqpProducer(Producer):
         exponential_backoff: bool = False,
         max_backoff_seconds: Optional[float] = None,
         apply_jitter: bool = False,
+        persistent_messages: bool = False,
         clock: Clock = LocalTimeClock(),
         sender: SenderT = send_message,
     ) -> None:
@@ -35,6 +36,7 @@ class AmqpProducer(Producer):
         self._exponential_backoff = exponential_backoff
         self._max_backoff_seconds = max_backoff_seconds
         self._apply_jitter = apply_jitter
+        self._persistent_messages = persistent_messages
         self._clock = clock
         self._sender = sender
 
@@ -49,6 +51,7 @@ class AmqpProducer(Producer):
             exponential_backoff=self._exponential_backoff,
             max_backoff_seconds=self._max_backoff_seconds,
             apply_jitter=self._apply_jitter,
+            persistent=self._persistent_messages,
             clock=self._clock,
         )
 

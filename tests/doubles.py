@@ -30,7 +30,11 @@ class FailingMessageSender:
         self._current_fails = 0
 
     async def __call__(
-        self, channel: AbstractChannel, message: Message, pipe: str
+        self,
+        channel: AbstractChannel,
+        message: Message,
+        pipe: str,
+        persistent: bool = False,
     ) -> SuccessT:
         if self._current_fails < self._fails_count:
             self._current_fails += 1
@@ -40,7 +44,11 @@ class FailingMessageSender:
 
 class RaisingMessageSender:
     async def __call__(
-        self, channel: AbstractChannel, message: Message, pipe: str
+        self,
+        channel: AbstractChannel,
+        message: Message,
+        pipe: str,
+        persistent: bool = False,
     ) -> SuccessT:
         raise Exception()
 
