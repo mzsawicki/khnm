@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, cast
 
 import pydantic
 from aio_pika.abc import AbstractRobustConnection
@@ -109,9 +109,8 @@ async def test_processing_through_pipeline_gives_correct_result(
     async def get_result_from_spy() -> Optional[int]:
         obj = spy.received_obj
         if obj:
-            assert isinstance(obj, SampleDataObject)
-            result_ = obj.integer
-            return result_
+            result_ = cast(SampleDataObject, obj)
+            return result_.integer
         return None
 
     result = await timeout(get_result_from_spy, awaited_result=9, timeout_seconds=10)
