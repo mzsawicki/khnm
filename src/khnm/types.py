@@ -16,13 +16,13 @@ T_covariant = TypeVar("T_covariant", bound=pydantic.BaseModel, covariant=True)
 class SyncCallbackProtocol(Protocol[T_contravariant, T_covariant]):
     def __call__(
         self, obj: T_contravariant
-    ) -> Union[T_covariant, Iterable[T_covariant]]: ...
+    ) -> Union[T_covariant, Iterable[T_covariant], None]: ...
 
 
 class AsyncCallbackProtocol(Protocol[T_contravariant, T_covariant]):
     def __call__(
         self, obj: T_contravariant
-    ) -> Awaitable[Union[T_covariant, Iterable[T_covariant]]]: ...
+    ) -> Awaitable[Union[T_covariant, Iterable[T_covariant], None]]: ...
 
 
 type SuccessT = bool

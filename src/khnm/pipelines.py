@@ -123,7 +123,8 @@ class Node(Runner):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
-                    await _handle_callback_output(result, producer)
+                    if result is not None:
+                        await _handle_callback_output(result, producer)
 
     async def _run_sync_callback(self) -> None:
         async with make_producer(self._connection, self._downstream_pipe) as producer:
@@ -131,7 +132,8 @@ class Node(Runner):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = cast(CallbackOutputT, self._callback(obj))
-                    await _handle_callback_output(result, producer)
+                    if result is not None:
+                        await _handle_callback_output(result, producer)
 
 
 class Sink(Runner):
