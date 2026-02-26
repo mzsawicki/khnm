@@ -42,7 +42,7 @@ services:
 
   sleeper:
     <<: *worker-base
-    command: ["khnm", "demo.main:pipeline", "sleeper"]
+    command: ["khnm", "demo.main:pipeline", "sleeper", "--tasks", "16"]
 
   multiplier:
     <<: *worker-base
