@@ -19,7 +19,7 @@ class SplitTask(pydantic.BaseModel):
 
 
 async def generate() -> AsyncGenerator[Task, None]:
-    for _ in range(100):
+    for _ in range(1000):
         numbers = [random.randint(1, 10) for _ in range(10)]
         yield Task(data=numbers)
 
@@ -46,10 +46,10 @@ def print_result(task: SplitTask) -> None:
 
 pipeline = (
     khnm.make_pipeline()
-    .add("generator", generate, pipe_length=1024)
-    .add("splitter", split, pipe_length=2048)
-    .add("sleeper", sleep, pipe_length=5076)
-    .add("multiplier", multiply, pipe_length=1152)
-    .add("printer", print_result)
+    .add("generator", generate, pipe_length=128)
+    .add("splitter", split, pipe_length=128, prefetch_count=1)
+    .add("sleeper", sleep, pipe_length=128, prefetch_count=1)
+    .add("multiplier", multiply, pipe_length=128, prefetch_count=1)
+    .add("printer", print_result, prefetch_count=1)
     .build()
 )
