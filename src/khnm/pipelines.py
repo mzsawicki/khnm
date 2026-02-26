@@ -1,6 +1,6 @@
 import inspect
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     Self,
     Callable,
@@ -11,6 +11,9 @@ from typing import (
     cast,
     Generator,
     Awaitable,
+    Optional,
+    TypedDict,
+    Unpack,
 )
 
 import pydantic
@@ -20,6 +23,7 @@ from pydantic import BaseModel
 from khnm.consumers import consume
 from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
+from khnm.time import Clock, LocalTimeClock
 from khnm.types import GeneratorCallbackT, CallbackT, CallbackOutputT
 
 
@@ -42,10 +46,26 @@ class Source(Runner):
         name: str,
         downstream_pipe: str,
         callback: GeneratorCallbackT,
+        pipe_length: Optional[int] = None,
+        durable: bool = False,
+        backoff_seconds: float = 0.1,
+        max_retries: Optional[int] = None,
+        exponential_backoff: bool = False,
+        max_backoff_seconds: Optional[float] = None,
+        apply_jitter: bool = False,
+        clock: Clock = LocalTimeClock(),
     ) -> None:
         self._name = name
         self._downstream_pipe = downstream_pipe
         self._callback = callback
+        self._pipe_length = pipe_length
+        self._durable = durable
+        self._backoff_seconds = backoff_seconds
+        self._max_retries = max_retries
+        self._exponential_backoff = exponential_backoff
+        self._max_backoff_seconds = max_backoff_seconds
+        self._apply_jitter = apply_jitter
+        self._clock = clock
 
     @property
     def name(self) -> str:
@@ -65,7 +85,18 @@ class Source(Runner):
         await self._run_sync_callback(connection)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(connection, self._downstream_pipe) as producer:
+        async with make_producer(
+            connection,
+            self._downstream_pipe,
+            size=self._pipe_length,
+            durable=self._durable,
+            backoff_seconds=self._backoff_seconds,
+            max_retries=self._max_retries,
+            exponential_backoff=self._exponential_backoff,
+            max_backoff_seconds=self._max_backoff_seconds,
+            apply_jitter=self._apply_jitter,
+            clock=self._clock,
+        ) as producer:
             async for obj in cast(
                 AsyncGenerator[CallbackOutputT, None], self._callback()
             ):
@@ -74,7 +105,18 @@ class Source(Runner):
                 await producer.publish(message)
 
     async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(connection, self._downstream_pipe) as producer:
+        async with make_producer(
+            connection,
+            self._downstream_pipe,
+            size=self._pipe_length,
+            durable=self._durable,
+            backoff_seconds=self._backoff_seconds,
+            max_retries=self._max_retries,
+            exponential_backoff=self._exponential_backoff,
+            max_backoff_seconds=self._max_backoff_seconds,
+            apply_jitter=self._apply_jitter,
+            clock=self._clock,
+        ) as producer:
             for obj in cast(Generator[CallbackOutputT, None, None], self._callback()):
                 assert isinstance(obj, pydantic.BaseModel)
                 message = pydantic_model_to_message(obj)
@@ -88,11 +130,33 @@ class Node(Runner):
         upstream_pipe: str,
         downstream_pipe: str,
         callback: CallbackT,
+        pipe_length: Optional[int] = None,
+        durable: bool = False,
+        backoff_seconds: float = 0.1,
+        max_retries: Optional[int] = None,
+        exponential_backoff: bool = False,
+        max_backoff_seconds: Optional[float] = None,
+        apply_jitter: bool = False,
+        connection_max_retries: Optional[int] = None,
+        connection_backoff_seconds: float = 1.0,
+        prefetch_count: Optional[int] = None,
+        clock: Clock = LocalTimeClock(),
     ) -> None:
         self._name = name
         self._upstream_pipe = upstream_pipe
         self._downstream_pipe = downstream_pipe
         self._callback = callback
+        self._pipe_length = pipe_length
+        self._durable = durable
+        self._backoff_seconds = backoff_seconds
+        self._max_retries = max_retries
+        self._exponential_backoff = exponential_backoff
+        self._max_backoff_seconds = max_backoff_seconds
+        self._apply_jitter = apply_jitter
+        self._connection_max_retries = connection_max_retries
+        self._connection_backoff_seconds = connection_backoff_seconds
+        self._prefetch_count = prefetch_count
+        self._clock = clock
 
     @property
     def name(self) -> str:
@@ -114,8 +178,26 @@ class Node(Runner):
             await self._run_sync_callback(connection)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(connection, self._downstream_pipe) as producer:
-            async for message in consume(connection, self._upstream_pipe):
+        async with make_producer(
+            connection,
+            self._downstream_pipe,
+            size=self._pipe_length,
+            durable=self._durable,
+            backoff_seconds=self._backoff_seconds,
+            max_retries=self._max_retries,
+            exponential_backoff=self._exponential_backoff,
+            max_backoff_seconds=self._max_backoff_seconds,
+            apply_jitter=self._apply_jitter,
+            clock=self._clock,
+        ) as producer:
+            async for message in consume(
+                connection,
+                self._upstream_pipe,
+                upstream_connection_max_retries=self._connection_max_retries,
+                upstream_connection_backoff_seconds=self._connection_backoff_seconds,
+                prefetch_count=self._prefetch_count,
+                clock=self._clock,
+            ):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
@@ -123,8 +205,26 @@ class Node(Runner):
                         await _handle_callback_output(result, producer)
 
     async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(connection, self._downstream_pipe) as producer:
-            async for message in consume(connection, self._upstream_pipe):
+        async with make_producer(
+            connection,
+            self._downstream_pipe,
+            size=self._pipe_length,
+            durable=self._durable,
+            backoff_seconds=self._backoff_seconds,
+            max_retries=self._max_retries,
+            exponential_backoff=self._exponential_backoff,
+            max_backoff_seconds=self._max_backoff_seconds,
+            apply_jitter=self._apply_jitter,
+            clock=self._clock,
+        ) as producer:
+            async for message in consume(
+                connection,
+                self._upstream_pipe,
+                upstream_connection_max_retries=self._connection_max_retries,
+                upstream_connection_backoff_seconds=self._connection_backoff_seconds,
+                prefetch_count=self._prefetch_count,
+                clock=self._clock,
+            ):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = cast(CallbackOutputT, self._callback(obj))
@@ -138,10 +238,18 @@ class Sink(Runner):
         name: str,
         upstream_pipe: str,
         callback: CallbackT,
+        connection_max_retries: Optional[int] = None,
+        connection_backoff_seconds: float = 1.0,
+        prefetch_count: Optional[int] = None,
+        clock: Clock = LocalTimeClock(),
     ) -> None:
         self._name = name
         self._upstream_pipe = upstream_pipe
         self._callback = callback
+        self._connection_max_retries = connection_max_retries
+        self._connection_backoff_seconds = connection_backoff_seconds
+        self._prefetch_count = prefetch_count
+        self._clock = clock
 
     @property
     def name(self) -> str:
@@ -163,30 +271,65 @@ class Sink(Runner):
             await self._run_sync_callback(connection)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async for message in consume(connection, self._upstream_pipe):
+        async for message in consume(
+            connection,
+            self._upstream_pipe,
+            upstream_connection_max_retries=self._connection_max_retries,
+            upstream_connection_backoff_seconds=self._connection_backoff_seconds,
+            prefetch_count=self._prefetch_count,
+            clock=self._clock,
+        ):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
                 await cast(Awaitable[CallbackOutputT], self._callback(obj))
 
     async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
-        async for message in consume(connection, self._upstream_pipe):
+        async for message in consume(
+            connection,
+            self._upstream_pipe,
+            upstream_connection_max_retries=self._connection_max_retries,
+            upstream_connection_backoff_seconds=self._connection_backoff_seconds,
+            prefetch_count=self._prefetch_count,
+            clock=self._clock,
+        ):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
                 cast(CallbackOutputT, self._callback(obj))
+
+
+class RunnerKwargs(TypedDict, total=False):
+    pipe_length: int
+    durable: bool
+    backoff_seconds: float
+    max_retries: int
+    exponential_backoff: bool
+    max_backoff_seconds: float
+    apply_jitter: bool
+    connection_max_retries: int
+    connection_backoff_seconds: float
+    prefetch_count: int
 
 
 @dataclass(init=True, frozen=True)
 class RunnerDefinition:
     name: str
     callback: Union[CallbackT, GeneratorCallbackT]
+    kwargs: RunnerKwargs = field(default_factory=RunnerKwargs)
 
 
 class PipelineBuilder:
     def __init__(self):
         self._runner_definitions: List[RunnerDefinition] = []
 
-    def add(self, name: str, callback: Union[GeneratorCallbackT, CallbackT]) -> Self:
-        self._runner_definitions.append(RunnerDefinition(name=name, callback=callback))
+    def add(
+        self,
+        name: str,
+        callback: Union[GeneratorCallbackT, CallbackT],
+        **kwargs: Unpack[RunnerKwargs],
+    ) -> Self:
+        self._runner_definitions.append(
+            RunnerDefinition(name=name, callback=callback, **kwargs)
+        )
         return self
 
     def build(self) -> Pipeline:
