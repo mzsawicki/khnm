@@ -297,7 +297,13 @@ class Sink(Runner):
                 cast(CallbackOutputT, self._callback(obj))
 
 
-class RunnerKwargs(TypedDict, total=False):
+class SinkKwargs(TypedDict, total=False):
+    connection_max_retries: int
+    connection_backoff_seconds: float
+    prefetch_count: int
+
+
+class SourceKwargs(TypedDict, total=False):
     pipe_length: int
     durable: bool
     backoff_seconds: float
@@ -305,16 +311,20 @@ class RunnerKwargs(TypedDict, total=False):
     exponential_backoff: bool
     max_backoff_seconds: float
     apply_jitter: bool
-    connection_max_retries: int
-    connection_backoff_seconds: float
-    prefetch_count: int
+
+
+class NodeKwargs(SourceKwargs, SinkKwargs):
+    pass
+
+
+RunnerKwargs = Union[SourceKwargs, SinkKwargs, NodeKwargs]
 
 
 @dataclass(init=True, frozen=True)
 class RunnerDefinition:
     name: str
     callback: Union[CallbackT, GeneratorCallbackT]
-    kwargs: RunnerKwargs = field(default_factory=RunnerKwargs)
+    kwargs: NodeKwargs = field(default_factory=NodeKwargs)
 
 
 class PipelineBuilder:
@@ -325,14 +335,17 @@ class PipelineBuilder:
         self,
         name: str,
         callback: Union[GeneratorCallbackT, CallbackT],
-        **kwargs: Unpack[RunnerKwargs],
+        **kwargs: Unpack[NodeKwargs],
     ) -> Self:
         self._runner_definitions.append(
-            RunnerDefinition(name=name, callback=callback, **kwargs)
+            RunnerDefinition(
+                name=name, callback=callback, kwargs=cast(NodeKwargs, kwargs)
+            )
         )
         return self
 
     def build(self) -> Pipeline:
+        # TODO: Validate kwargs for runner type
         runners: List[Runner] = []
         source_definition = self._runner_definitions.pop(0)
         next_node_definition = self._runner_definitions.pop(0)
@@ -341,9 +354,9 @@ class PipelineBuilder:
                 name=source_definition.name,
                 downstream_pipe=next_node_definition.name,
                 callback=cast(GeneratorCallbackT, source_definition.callback),
+                **cast(SourceKwargs, source_definition.kwargs),
             )
         )
-        previous_node_definition = source_definition
         while self._runner_definitions:
             current_node_definition = next_node_definition
             next_node_definition = self._runner_definitions.pop(0)
@@ -353,14 +366,15 @@ class PipelineBuilder:
                     upstream_pipe=current_node_definition.name,
                     downstream_pipe=next_node_definition.name,
                     callback=cast(CallbackT, current_node_definition.callback),
+                    **current_node_definition.kwargs,
                 )
             )
-            previous_node_definition = current_node_definition
         runners.append(
             Sink(
                 name=next_node_definition.name,
                 upstream_pipe=next_node_definition.name,
                 callback=cast(CallbackT, next_node_definition.callback),
+                **cast(SinkKwargs, next_node_definition.kwargs),
             )
         )
         return Pipeline(runners)

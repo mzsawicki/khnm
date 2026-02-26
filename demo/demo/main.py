@@ -46,10 +46,10 @@ def print_result(task: SplitTask) -> None:
 
 pipeline = (
     khnm.make_pipeline()
-    .add("generator", generate)
-    .add("splitter", split)
-    .add("sleeper", sleep)
-    .add("multiplier", multiply)
+    .add("generator", generate, pipe_length=1024)
+    .add("splitter", split, pipe_length=2048)
+    .add("sleeper", sleep, pipe_length=5076)
+    .add("multiplier", multiply, pipe_length=1152)
     .add("printer", print_result)
     .build()
 )
