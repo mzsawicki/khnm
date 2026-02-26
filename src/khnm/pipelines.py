@@ -1,5 +1,8 @@
+import asyncio
 import inspect
+from asyncio import AbstractEventLoop
 from collections.abc import Iterable
+from concurrent.futures.thread import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import (
     Self,
@@ -36,7 +39,7 @@ class Runner(Protocol):
     def name(self) -> str:
         pass
 
-    async def run(self, connection: AbstractRobustConnection) -> None:
+    async def run(self, connection: AbstractRobustConnection, threads: int) -> None:
         pass
 
 
@@ -71,18 +74,22 @@ class Source(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self, connection: AbstractRobustConnection) -> None:
+    async def run(self, connection: AbstractRobustConnection, threads: int) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
             await self._run_async(connection)
         else:
-            await self._run_sync(connection)
+            await self._run_sync(connection, threads)
 
     async def _run_async(self, connection: AbstractRobustConnection) -> None:
         await self._run_async_callback(connection)
 
-    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
-        await self._run_sync_callback(connection)
+    async def _run_sync(
+        self, connection: AbstractRobustConnection, threads: int
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            await self._run_sync_callback(connection, loop, executor)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async with make_producer(
@@ -104,7 +111,12 @@ class Source(Runner):
                 message = pydantic_model_to_message(obj)
                 await producer.publish(message)
 
-    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+    async def _run_sync_callback(
+        self,
+        connection: AbstractRobustConnection,
+        loop: AbstractEventLoop,
+        executor: ThreadPoolExecutor,
+    ) -> None:
         async with make_producer(
             connection,
             self._downstream_pipe,
@@ -117,7 +129,14 @@ class Source(Runner):
             apply_jitter=self._apply_jitter,
             clock=self._clock,
         ) as producer:
-            for obj in cast(Generator[CallbackOutputT, None, None], self._callback()):
+            generator = cast(Generator[CallbackOutputT, None, None], self._callback())
+            sentinel = object()
+            while True:
+                obj = await loop.run_in_executor(
+                    executor, lambda: next(generator, sentinel)
+                )
+                if obj is sentinel:
+                    break
                 assert isinstance(obj, pydantic.BaseModel)
                 message = pydantic_model_to_message(obj)
                 await producer.publish(message)
@@ -162,20 +181,24 @@ class Node(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self, connection: AbstractRobustConnection) -> None:
+    async def run(self, connection: AbstractRobustConnection, threads: int) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
             await self._run_async(connection)
         else:
-            await self._run_sync(connection)
+            await self._run_sync(connection, threads)
 
     async def _run_async(self, connection: AbstractRobustConnection) -> None:
         while True:
             await self._run_async_callback(connection)
 
-    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
-        while True:
-            await self._run_sync_callback(connection)
+    async def _run_sync(
+        self, connection: AbstractRobustConnection, threads: int
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            while True:
+                await self._run_sync_callback(connection, loop, executor)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async with make_producer(
@@ -204,7 +227,12 @@ class Node(Runner):
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
-    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+    async def _run_sync_callback(
+        self,
+        connection: AbstractRobustConnection,
+        loop: AbstractEventLoop,
+        executor: ThreadPoolExecutor,
+    ) -> None:
         async with make_producer(
             connection,
             self._downstream_pipe,
@@ -227,7 +255,10 @@ class Node(Runner):
             ):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
-                    result = cast(CallbackOutputT, self._callback(obj))
+                    result = cast(
+                        CallbackOutputT,
+                        await loop.run_in_executor(executor, self._callback, obj),
+                    )
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
@@ -255,20 +286,24 @@ class Sink(Runner):
     def name(self) -> str:
         return self._name
 
-    async def run(self, connection: AbstractRobustConnection) -> None:
+    async def run(self, connection: AbstractRobustConnection, threads: int) -> None:
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
             await self._run_async(connection)
         else:
-            await self._run_sync(connection)
+            await self._run_sync(connection, threads)
 
     async def _run_async(self, connection: AbstractRobustConnection) -> None:
         while True:
             await self._run_async_callback(connection)
 
-    async def _run_sync(self, connection: AbstractRobustConnection) -> None:
-        while True:
-            await self._run_sync_callback(connection)
+    async def _run_sync(
+        self, connection: AbstractRobustConnection, threads: int
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            while True:
+                await self._run_sync_callback(connection, loop, executor)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async for message in consume(
@@ -283,7 +318,12 @@ class Sink(Runner):
                 obj = message_to_pydantic_model(current_message, Bag)
                 await cast(Awaitable[CallbackOutputT], self._callback(obj))
 
-    async def _run_sync_callback(self, connection: AbstractRobustConnection) -> None:
+    async def _run_sync_callback(
+        self,
+        connection: AbstractRobustConnection,
+        loop: AbstractEventLoop,
+        executor: ThreadPoolExecutor,
+    ) -> None:
         async for message in consume(
             connection,
             self._upstream_pipe,
@@ -294,7 +334,7 @@ class Sink(Runner):
         ):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
-                cast(CallbackOutputT, self._callback(obj))
+                await loop.run_in_executor(executor, self._callback, obj)
 
 
 class SinkKwargs(TypedDict, total=False):
@@ -385,11 +425,13 @@ class Pipeline:
         self._runners = runners
         self._runners_map = {runner.name: runner for runner in runners}
 
-    async def run(self, connection: AbstractRobustConnection, name: str) -> None:
+    async def run(
+        self, connection: AbstractRobustConnection, name: str, threads: int = 1
+    ) -> None:
         runner = self._runners_map.get(name)
         if not runner:
             raise ValueError(f"Runner {name} not found in the pipeline")
-        await runner.run(connection)
+        await runner.run(connection, threads)
 
 
 def make_pipeline() -> PipelineBuilder:
