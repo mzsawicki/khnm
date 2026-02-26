@@ -15,9 +15,11 @@ def load_pipeline_object(import_string: str) -> Pipeline:
     return pipeline
 
 
-async def run_node(pipeline: Pipeline, node_name: str, connection_string: str) -> None:
+async def run_node(
+    pipeline: Pipeline, node_name: str, connection_string: str, tasks: int = 1
+) -> None:
     connection = await connect_robust(connection_string)
-    await pipeline.run(connection, node_name)
+    await asyncio.gather(*[pipeline.run(connection, node_name) for _ in range(tasks)])
 
 
 def main() -> None:
@@ -27,10 +29,16 @@ def main() -> None:
         help="Where to look for pipeline object, in format 'module:attribute' (e.g. 'main:pipeline')",
     )
     parser.add_argument("node", help="Node name to run")
+    parser.add_argument(
+        "--tasks",
+        type=int,
+        default=1,
+        help="Number of concurrent async tasks to run",
+    )
     args = parser.parse_args()
 
     conn_string = os.getenv("RABBITMQ_URL")
     assert conn_string
 
     pipeline = load_pipeline_object(args.pipeline)
-    asyncio.run(run_node(pipeline, args.node, conn_string))
+    asyncio.run(run_node(pipeline, args.node, conn_string, args.tasks))
