@@ -38,7 +38,7 @@ services:
 
   splitter:
     <<: *worker-base
-    command: ["khnm", "demo.main:pipeline", "splitter"]
+    command: ["khnm", "demo.main:pipeline", "splitter", "--tasks", "4", "--threads", "8"]
 
   sleeper:
     <<: *worker-base
@@ -46,11 +46,11 @@ services:
 
   multiplier:
     <<: *worker-base
-    command: ["khnm", "demo.main:pipeline", "multiplier"]
+    command: ["khnm", "demo.main:pipeline", "multiplier", "--tasks", "4", "--threads", "8"]
 
   printer:
    <<: *worker-base
-   command: ["khnm", "demo.main:pipeline", "printer"]
+   command: ["khnm", "demo.main:pipeline", "printer", "--threads", "16"]
 
 volumes:
   rabbitmq_data:
