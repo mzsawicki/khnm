@@ -252,3 +252,86 @@ async def test_sequential_node_is_detected_by_barrier(
 
     assert success is not True
     assert barrier.broken
+
+
+async def test_sink_runs_on_multiple_threads(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    threads: int = 4
+    timeout_seconds: int = 5
+    barrier = threading.Barrier(threads)
+    observed_thread_ids = []
+    lock = threading.Lock()
+    processed = []
+
+    def sink_callback(obj: SampleDataObject) -> None:
+        with lock:
+            observed_thread_ids.append(threading.current_thread().ident)
+        barrier.wait(timeout=timeout_seconds)
+        processed.append(True)
+
+    pipeline = (
+        make_pipeline()
+        .add("source", generate_random_numbers_async)
+        .add("sink", sink_callback)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink", threads=threads)),
+    ]
+
+    async def did_process() -> bool:
+        return len(processed) > 0
+
+    success = await timeout(
+        did_process,
+        awaited_result=True,
+        timeout_seconds=timeout_seconds * 2,
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success is True and len(set(observed_thread_ids)) == threads
+
+
+async def test_sequential_sink_is_detected_by_barrier(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    threads: int = 1
+    timeout_seconds: int = 2
+    barrier = threading.Barrier(threads + 1)  # always unsatisfiable with threads=1
+    processed = []
+
+    def sink_callback(obj: SampleDataObject) -> None:
+        barrier.wait(timeout=timeout_seconds)
+        processed.append(True)
+
+    pipeline = (
+        make_pipeline()
+        .add("source", generate_random_numbers_async)
+        .add("sink", sink_callback)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink", threads=threads)),
+    ]
+
+    async def did_process() -> bool:
+        return len(processed) > 0
+
+    success = await timeout(
+        did_process,
+        awaited_result=True,
+        timeout_seconds=timeout_seconds * 2,
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success is not True
+    assert barrier.broken

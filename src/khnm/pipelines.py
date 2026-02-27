@@ -319,7 +319,7 @@ class Sink(Runner):
         loop = asyncio.get_running_loop()
         with ThreadPoolExecutor(max_workers=threads) as executor:
             while True:
-                await self._run_sync_callback(connection, loop, executor)
+                await self._run_sync_callback(connection, loop, executor, threads)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async for message in consume(
@@ -339,7 +339,19 @@ class Sink(Runner):
         connection: AbstractRobustConnection,
         loop: AbstractEventLoop,
         executor: ThreadPoolExecutor,
+        threads: int,
     ) -> None:
+        semaphore = asyncio.Semaphore(threads)
+        pending = set()
+
+        async def process(
+            message_context: AsyncContextManager[AbstractIncomingMessage],
+        ) -> None:
+            async with semaphore:
+                async with message_context as current_message:
+                    obj = message_to_pydantic_model(current_message, Bag)
+                    await loop.run_in_executor(executor, self._callback, obj)
+
         async for message in consume(
             connection,
             self._upstream_pipe,
@@ -348,9 +360,12 @@ class Sink(Runner):
             prefetch_count=self._prefetch_count,
             clock=self._clock,
         ):
-            async with message as current_message:
-                obj = message_to_pydantic_model(current_message, Bag)
-                await loop.run_in_executor(executor, self._callback, obj)
+            task = asyncio.create_task(process(message))
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+
+        if pending:
+            await asyncio.gather(*pending)
 
 
 class SinkKwargs(TypedDict, total=False):
