@@ -136,20 +136,20 @@ khnm.make_pipeline()
     .build()
 ```
 
-| Option | Applies to | Description |
-|---|---|---|
-| `pipe_length` | Source, Node | Max queue length |
-| `durable` | Source, Node | Persist messages to disk |
-| `prefetch_count` | Node, Sink | RabbitMQ QoS -- max unacknowledged messages per consumer |
-| `backoff_seconds` | Source, Node | Initial backoff for publish retries |
-| `max_retries` | Source, Node | Max publish retry attempts |
-| `exponential_backoff` | Source, Node | Enable exponential backoff |
-| `max_backoff_seconds` | Source, Node | Cap on backoff duration |
-| `apply_jitter` | Source, Node | Add randomness to backoff |
-| `connection_max_retries` | Node, Sink | Max connection retry attempts |
-| `connection_backoff_seconds` | Node, Sink | Backoff between connection retries |
+| Option | Applies to | Description                                                                                                                                |
+|---|---|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `pipe_length` | Source, Node | Max queue length                                                                                                                           |
+| `durable` | Source, Node | Persist messages to disk                                                                                                                   |
+| `prefetch_count` | Node, Sink | RabbitMQ QoS -- max unacknowledged messages per consumer. Important! If you use multiple threads, set this to no lower than threads count! |
+| `backoff_seconds` | Source, Node | Initial backoff for publish retries                                                                                                        |
+| `max_retries` | Source, Node | Max publish retry attempts                                                                                                                 |
+| `exponential_backoff` | Source, Node | Enable exponential backoff                                                                                                                 |
+| `max_backoff_seconds` | Source, Node | Cap on backoff duration                                                                                                                    |
+| `apply_jitter` | Source, Node | Add randomness to backoff                                                                                                                  |
+| `connection_max_retries` | Node, Sink | Max connection retry attempts                                                                                                              |
+| `connection_backoff_seconds` | Node, Sink | Backoff between connection retries                                                                                                         |
 
-## CLI reference
+## CLI reference:
 
 ```
 khnm <module:pipeline> <node> [--tasks N] [--threads N]

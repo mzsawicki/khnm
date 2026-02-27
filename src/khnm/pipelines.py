@@ -17,10 +17,11 @@ from typing import (
     Optional,
     TypedDict,
     Unpack,
+    AsyncContextManager,
 )
 
 import pydantic
-from aio_pika.abc import AbstractRobustConnection
+from aio_pika.abc import AbstractRobustConnection, AbstractIncomingMessage
 from pydantic import BaseModel
 
 from khnm.consumers import consume
@@ -198,7 +199,7 @@ class Node(Runner):
         loop = asyncio.get_running_loop()
         with ThreadPoolExecutor(max_workers=threads) as executor:
             while True:
-                await self._run_sync_callback(connection, loop, executor)
+                await self._run_sync_callback(connection, loop, executor, threads)
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async with make_producer(
@@ -232,6 +233,7 @@ class Node(Runner):
         connection: AbstractRobustConnection,
         loop: AbstractEventLoop,
         executor: ThreadPoolExecutor,
+        threads: int,
     ) -> None:
         async with make_producer(
             connection,
@@ -245,6 +247,22 @@ class Node(Runner):
             apply_jitter=self._apply_jitter,
             clock=self._clock,
         ) as producer:
+            semaphore = asyncio.Semaphore(threads)
+            pending = set()
+
+            async def process(
+                message_context: AsyncContextManager[AbstractIncomingMessage],
+            ) -> None:
+                async with semaphore:
+                    async with message_context as current_message:
+                        obj = message_to_pydantic_model(current_message, Bag)
+                        result = cast(
+                            CallbackOutputT,
+                            await loop.run_in_executor(executor, self._callback, obj),
+                        )
+                        if result is not None:
+                            await _handle_callback_output(result, producer)
+
             async for message in consume(
                 connection,
                 self._upstream_pipe,
@@ -253,14 +271,12 @@ class Node(Runner):
                 prefetch_count=self._prefetch_count,
                 clock=self._clock,
             ):
-                async with message as current_message:
-                    obj = message_to_pydantic_model(current_message, Bag)
-                    result = cast(
-                        CallbackOutputT,
-                        await loop.run_in_executor(executor, self._callback, obj),
-                    )
-                    if result is not None:
-                        await _handle_callback_output(result, producer)
+                task = asyncio.create_task(process(message))
+                pending.add(task)
+                task.add_done_callback(pending.discard)
+
+            if pending:
+                await asyncio.gather(*pending)
 
 
 class Sink(Runner):

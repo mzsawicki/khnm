@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from typing import AsyncGenerator, Optional, cast
 
 from aio_pika.abc import AbstractRobustConnection
@@ -163,3 +164,91 @@ async def test_processing_through_pipeline_gives_correct_result_with_custom_para
         task.cancel()
 
     assert result == 9
+
+
+async def test_node_runs_on_multiple_threads(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    threads: int = 4
+    timeout_seconds: int = 5
+    barrier = threading.Barrier(threads)
+    observed_thread_ids = []
+    lock = threading.Lock()
+    spy = AsyncCallbackSpy()
+
+    async def did_spy_got_result() -> bool:
+        obj = spy.received_obj
+        return obj is not None
+
+    def slow_callback(obj: SampleDataObject) -> SampleDataObject:
+        with lock:
+            observed_thread_ids.append(threading.current_thread().ident)
+        barrier.wait(timeout=timeout_seconds)
+        return obj
+
+    pipeline = (
+        make_pipeline()
+        .add("source", generate_random_numbers_async)
+        .add("node", slow_callback)
+        .add("sink", spy)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "node", threads=threads)),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink")),
+    ]
+
+    success = await timeout(
+        did_spy_got_result,
+        awaited_result=True,
+        timeout_seconds=timeout_seconds * 2,
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success is True and len(set(observed_thread_ids)) == threads
+
+
+async def test_sequential_node_is_detected_by_barrier(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    threads: int = 1
+    timeout_seconds: int = 2
+    barrier = threading.Barrier(threads + 1)  # always unsatisfiable with threads=1
+    spy = AsyncCallbackSpy()
+
+    async def did_spy_get_result() -> bool:
+        return spy.received_obj is not None
+
+    def slow_callback(obj: SampleDataObject) -> SampleDataObject:
+        barrier.wait(timeout=timeout_seconds)
+        return obj
+
+    pipeline = (
+        make_pipeline()
+        .add("source", generate_random_numbers_async)
+        .add("node", slow_callback)
+        .add("sink", spy)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "node", threads=threads)),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink")),
+    ]
+
+    success = await timeout(
+        did_spy_get_result,
+        awaited_result=True,
+        timeout_seconds=timeout_seconds * 2,
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success is not True
+    assert barrier.broken
