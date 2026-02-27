@@ -36,4 +36,4 @@ pythonpath = ["src"]
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/my_library"]
+packages = ["src/khnm"]
