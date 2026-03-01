@@ -75,6 +75,11 @@ async def send_with_backoff(
                 if not exponential_backoff
                 else backoff_seconds * pow(2, retries)
             )
+            if (
+                max_backoff_seconds is not None
+                and wait_time_seconds > max_backoff_seconds
+            ):
+                wait_time_seconds = max_backoff_seconds
             if apply_jitter:
                 wait_time_seconds = random.uniform(0, wait_time_seconds)
             await clock.sleep(wait_time_seconds)

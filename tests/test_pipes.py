@@ -390,3 +390,34 @@ async def test_infinite_retries_applies_jitter(
             clock=clock_2,
         )
     assert clock_1.now() != clock_2.now()
+
+
+async def test_max_backoff_cap_works_with_infinite_retries(
+    amqp_connection: AbstractRobustConnection,
+    sample_message: Message,
+    clock: Clock,
+    pipe: str = "test",
+) -> None:
+    fails_count = 10
+    backoff_seconds_cap = 10
+
+    start_time = clock.now()
+    sender = FailingMessageSender(fails_count)
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe)
+        await send_with_backoff(
+            channel,
+            sender,
+            sample_message,
+            pipe,
+            backoff_seconds=1,
+            exponential_backoff=True,
+            max_retries=None,
+            apply_jitter=False,
+            max_backoff_seconds=backoff_seconds_cap,
+            clock=clock,
+        )
+    stop_time = clock.now()
+    delta = stop_time - start_time
+    seconds_passed = delta.total_seconds()
+    assert seconds_passed <= backoff_seconds_cap * fails_count
