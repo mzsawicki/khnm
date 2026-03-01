@@ -9,9 +9,9 @@ class Clock(Protocol):
     async def sleep(self, time_seconds: float) -> None: ...
 
 
-class LocalTimeClock(Clock):
+class UtcClock(Clock):
     def now(self) -> datetime.datetime:
-        return datetime.datetime.now()
+        return datetime.datetime.now(datetime.timezone.utc)
 
     async def sleep(self, time_seconds: float) -> None:
         await asyncio.sleep(time_seconds)

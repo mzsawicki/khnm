@@ -6,7 +6,7 @@ from aio_pika.abc import ExchangeType, AbstractChannel, AbstractQueue
 from aiormq import DeliveryError, ChannelNotFoundEntity
 
 from khnm.types import SenderT, QueueGetterT
-from khnm.time import Clock, LocalTimeClock
+from khnm.time import Clock, UtcClock
 from khnm.types import SuccessT
 
 
@@ -64,7 +64,7 @@ async def send_with_backoff(
     max_backoff_seconds: Optional[float] = None,
     apply_jitter: bool = False,
     persistent: bool = False,
-    clock: Clock = LocalTimeClock(),
+    clock: Clock = UtcClock(),
 ) -> SuccessT:
     retries = 0
     sent = await sender(channel, message, pipe, persistent)
@@ -101,7 +101,7 @@ async def wait_for_pipe(
     pipe: str,
     backoff_seconds: float = 0.1,
     max_retries: Optional[int] = None,
-    clock: Clock = LocalTimeClock(),
+    clock: Clock = UtcClock(),
     getter: QueueGetterT = get_queue,
 ) -> SuccessT:
     queue = get_queue_name(pipe)

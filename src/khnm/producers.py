@@ -5,7 +5,7 @@ from aio_pika import Message
 from aio_pika.abc import AbstractRobustConnection, AbstractChannel
 
 from khnm.pipes import declare_pipe, send_with_backoff, send_message
-from khnm.time import Clock, LocalTimeClock
+from khnm.time import Clock, UtcClock
 from khnm.types import SenderT
 
 
@@ -26,7 +26,7 @@ class AmqpProducer(Producer):
         max_backoff_seconds: Optional[float] = None,
         apply_jitter: bool = False,
         persistent_messages: bool = False,
-        clock: Clock = LocalTimeClock(),
+        clock: Clock = UtcClock(),
         sender: SenderT = send_message,
     ) -> None:
         self._channel = channel
@@ -71,7 +71,7 @@ async def make_producer(
     exponential_backoff: bool = False,
     max_backoff_seconds: Optional[float] = None,
     apply_jitter: bool = False,
-    clock: Clock = LocalTimeClock(),
+    clock: Clock = UtcClock(),
     sender: SenderT = send_message,
 ) -> AsyncGenerator[Producer, None]:
     channel = await amqp_connection.channel()

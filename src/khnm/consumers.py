@@ -10,7 +10,7 @@ from aio_pika.abc import (
 
 from khnm.exceptions import UpstreamPipeUnavailable
 from khnm.pipes import get_queue, wait_for_pipe, get_queue_name
-from khnm.time import Clock, LocalTimeClock
+from khnm.time import Clock, UtcClock
 from khnm.types import QueueGetterT
 
 
@@ -21,7 +21,7 @@ async def consume(
     upstream_connection_backoff_seconds: float = 1.0,
     upstream_queue_getter: QueueGetterT = get_queue,
     prefetch_count: Optional[int] = None,
-    clock: Clock = LocalTimeClock(),
+    clock: Clock = UtcClock(),
 ) -> AsyncGenerator[AbstractAsyncContextManager[AbstractIncomingMessage], None]:
     channel = await _connect(
         connection=amqp_connection,
@@ -48,7 +48,7 @@ async def _connect(
     upstream_connection_max_retries: Optional[int] = None,
     prefetch_count: Optional[int] = None,
     queue_getter: QueueGetterT = get_queue,
-    clock: Clock = LocalTimeClock(),
+    clock: Clock = UtcClock(),
 ) -> AbstractChannel:
     channel = await connection.channel()
     if prefetch_count is not None:

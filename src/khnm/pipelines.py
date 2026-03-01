@@ -29,7 +29,7 @@ from khnm.consumers import consume
 from khnm.exceptions import NodeKwargsInvalid
 from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
-from khnm.time import Clock, LocalTimeClock
+from khnm.time import Clock, UtcClock
 from khnm.types import GeneratorCallbackT, CallbackT, CallbackOutputT
 
 
@@ -59,7 +59,7 @@ class Source(Runner):
         exponential_backoff: bool = False,
         max_backoff_seconds: Optional[float] = None,
         apply_jitter: bool = False,
-        clock: Clock = LocalTimeClock(),
+        clock: Clock = UtcClock(),
     ) -> None:
         self._name = name
         self._downstream_pipe = downstream_pipe
@@ -162,7 +162,7 @@ class Node(Runner):
         connection_max_retries: Optional[int] = None,
         connection_backoff_seconds: float = 1.0,
         prefetch_count: Optional[int] = None,
-        clock: Clock = LocalTimeClock(),
+        clock: Clock = UtcClock(),
     ) -> None:
         self._name = name
         self._upstream_pipe = upstream_pipe
@@ -290,7 +290,7 @@ class Sink(Runner):
         connection_max_retries: Optional[int] = None,
         connection_backoff_seconds: float = 1.0,
         prefetch_count: Optional[int] = None,
-        clock: Clock = LocalTimeClock(),
+        clock: Clock = UtcClock(),
     ) -> None:
         self._name = name
         self._upstream_pipe = upstream_pipe
