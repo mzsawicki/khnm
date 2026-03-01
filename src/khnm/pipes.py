@@ -70,8 +70,14 @@ async def send_with_backoff(
     sent = await sender(channel, message, pipe, persistent)
     if max_retries is None:
         while not sent:
-            await clock.sleep(backoff_seconds)
+            wait_time_seconds = (
+                backoff_seconds
+                if not exponential_backoff
+                else backoff_seconds * pow(2, retries)
+            )
+            await clock.sleep(wait_time_seconds)
             sent = await sender(channel, message, pipe, persistent)
+            retries += 1
     else:
         while not sent and retries < max_retries:
             sent = await sender(channel, message, pipe, persistent)
