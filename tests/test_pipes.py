@@ -351,3 +351,42 @@ async def test_exponential_backoff_is_respected_when_retries_set_infinite(
     delta = stop_time - start_time
     seconds_passed = delta.total_seconds()
     assert seconds_passed == 2**10 - 1
+
+
+async def test_infinite_retries_applies_jitter(
+    amqp_connection: AbstractRobustConnection,
+    sample_message: Message,
+    clock: Clock,
+    pipe: str = "test",
+) -> None:
+    fails_count = 10
+    clock_1 = FakeClock(clock.now())
+    clock_2 = FakeClock(clock_1.now())
+    sender_1 = FailingMessageSender(fails_count)
+    sender_2 = FailingMessageSender(fails_count)
+
+    async with amqp_connection.channel() as channel:
+        await declare_pipe(channel, pipe)
+        await send_with_backoff(
+            channel,
+            sender_1,
+            sample_message,
+            pipe,
+            backoff_seconds=1,
+            exponential_backoff=False,
+            max_retries=None,
+            apply_jitter=True,
+            clock=clock_1,
+        )
+        await send_with_backoff(
+            channel,
+            sender_2,
+            sample_message,
+            pipe,
+            backoff_seconds=1,
+            exponential_backoff=False,
+            max_retries=None,
+            apply_jitter=True,
+            clock=clock_2,
+        )
+    assert clock_1.now() != clock_2.now()

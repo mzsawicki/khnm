@@ -75,6 +75,8 @@ async def send_with_backoff(
                 if not exponential_backoff
                 else backoff_seconds * pow(2, retries)
             )
+            if apply_jitter:
+                wait_time_seconds = random.uniform(0, wait_time_seconds)
             await clock.sleep(wait_time_seconds)
             sent = await sender(channel, message, pipe, persistent)
             retries += 1
