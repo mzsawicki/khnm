@@ -1,9 +1,11 @@
 import asyncio
 import threading
-from typing import AsyncGenerator, Optional, cast
+from typing import AsyncGenerator, Optional, cast, Any
 
+import pytest
 from aio_pika.abc import AbstractRobustConnection
 
+from khnm.exceptions import NodeKwargsInvalid
 from khnm.pipelines import make_pipeline
 from tests.doubles import (
     generate_random_numbers_async,
@@ -335,3 +337,25 @@ async def test_sequential_sink_is_detected_by_barrier(
 
     assert success is not True
     assert barrier.broken
+
+
+@pytest.mark.parametrize(
+    "kwarg_name,kwarg_value",
+    [
+        ("connection_max_retries", 1),
+        ("connection_backoff_seconds", 1),
+        ("prefetch_count", 1),
+    ],
+)
+async def test_source_node_kwargs_raises_exception_at_invalid_kwargs(
+    amqp_connection: AbstractRobustConnection,
+    kwarg_name: str,
+    kwarg_value: Any,
+) -> None:
+    with pytest.raises(NodeKwargsInvalid):
+        (
+            make_pipeline()
+            .add("source", generate_random_numbers_async, **{kwarg_name: kwarg_value})
+            .add("sink", lambda obj: None)
+            .build()
+        )

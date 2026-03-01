@@ -18,6 +18,7 @@ from typing import (
     TypedDict,
     Unpack,
     AsyncContextManager,
+    get_type_hints,
 )
 
 import pydantic
@@ -25,6 +26,7 @@ from aio_pika.abc import AbstractRobustConnection, AbstractIncomingMessage
 from pydantic import BaseModel
 
 from khnm.consumers import consume
+from khnm.exceptions import NodeKwargsInvalid
 from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
 from khnm.time import Clock, LocalTimeClock
@@ -416,10 +418,10 @@ class PipelineBuilder:
         return self
 
     def build(self) -> Pipeline:
-        # TODO: Validate kwargs for runner type
         runners: List[Runner] = []
         source_definition = self._runner_definitions.pop(0)
         next_node_definition = self._runner_definitions.pop(0)
+        _validate_source_kwargs(**source_definition.kwargs)
         runners.append(
             Source(
                 name=source_definition.name,
@@ -498,3 +500,13 @@ def _is_callback_result_iterable(
     value: CallbackOutputT,
 ) -> bool:
     return isinstance(value, Iterable) and not isinstance(value, BaseModel)
+
+
+def _validate_source_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
+    for kwarg_name, _ in kwargs.items():
+        if kwarg_name not in get_type_hints(SourceKwargs):
+            raise NodeKwargsInvalid(f"Invalid argument for source node: {kwarg_name}")
+
+
+def _validate_sink_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
+    pass
