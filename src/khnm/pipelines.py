@@ -411,7 +411,8 @@ class RunnerDefinition:
 
 
 class PipelineBuilder:
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None) -> None:
+        self._name = name
         self._runner_definitions: List[RunnerDefinition] = []
 
     def add(
@@ -420,9 +421,13 @@ class PipelineBuilder:
         callback: Union[GeneratorCallbackT, CallbackT],
         **kwargs: Unpack[NodeKwargs],
     ) -> Self:
+        if self._name:
+            full_name = f"{self._name}.{name}"
+        else:
+            full_name = name
         self._runner_definitions.append(
             RunnerDefinition(
-                name=name, callback=callback, kwargs=cast(NodeKwargs, kwargs)
+                name=full_name, callback=callback, kwargs=cast(NodeKwargs, kwargs)
             )
         )
         return self
@@ -481,8 +486,8 @@ class Pipeline:
         await runner.run(connection, threads)
 
 
-def make_pipeline() -> PipelineBuilder:
-    return PipelineBuilder()
+def make_pipeline(name: Optional[str] = None) -> PipelineBuilder:
+    return PipelineBuilder(name)
 
 
 async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:
