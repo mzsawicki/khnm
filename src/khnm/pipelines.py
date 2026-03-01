@@ -111,7 +111,10 @@ class Source(Runner):
             async for obj in cast(
                 AsyncGenerator[CallbackOutputT, None], self._callback()
             ):
-                assert isinstance(obj, pydantic.BaseModel)
+                if not isinstance(obj, pydantic.BaseModel):
+                    raise TypeError(
+                        f"Source callback must yield BaseModel instances, got {type(obj).__name__}"
+                    )
                 message = pydantic_model_to_message(obj)
                 await producer.publish(message)
 
@@ -142,7 +145,10 @@ class Source(Runner):
                 )
                 if obj is sentinel:
                     break
-                assert isinstance(obj, pydantic.BaseModel)
+                if not isinstance(obj, pydantic.BaseModel):
+                    raise TypeError(
+                        f"Source callback must yield BaseModel instances, got {type(obj).__name__}"
+                    )
                 message = pydantic_model_to_message(obj)
                 await producer.publish(message)
 
@@ -488,7 +494,10 @@ async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -
         for item_serialized in results_serialized:
             await producer.publish(item_serialized)
     else:
-        assert isinstance(result, BaseModel)
+        if not isinstance(result, BaseModel):
+            raise TypeError(
+                f"Callback must return a BaseModel instance, got {type(result).__name__}"
+            )
         result_serialized = pydantic_model_to_message(result)
         await producer.publish(result_serialized)
 
