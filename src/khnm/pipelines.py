@@ -422,9 +422,10 @@ class PipelineBuilder:
         return self
 
     def build(self) -> Pipeline:
+        definitions = list(self._runner_definitions)
         runners: List[Runner] = []
-        source_definition = self._runner_definitions.pop(0)
-        next_node_definition = self._runner_definitions.pop(0)
+        source_definition = definitions.pop(0)
+        next_node_definition = definitions.pop(0)
         _validate_source_kwargs(**source_definition.kwargs)
         runners.append(
             Source(
@@ -434,9 +435,9 @@ class PipelineBuilder:
                 **cast(SourceKwargs, source_definition.kwargs),
             )
         )
-        while self._runner_definitions:
+        while definitions:
             current_node_definition = next_node_definition
-            next_node_definition = self._runner_definitions.pop(0)
+            next_node_definition = definitions.pop(0)
             runners.append(
                 Node(
                     name=current_node_definition.name,
