@@ -179,7 +179,6 @@ class Node(Runner):
         self._connection_backoff_seconds = connection_backoff_seconds
         self._prefetch_count = prefetch_count
         self._clock = clock
-        self._input_type = _get_callback_input_type(self._callback)
 
     @property
     def name(self) -> str:
@@ -226,7 +225,7 @@ class Node(Runner):
                 clock=self._clock,
             ):
                 async with message as current_message:
-                    obj = message_to_pydantic_model(current_message, self._input_type)
+                    obj = message_to_pydantic_model(current_message, Bag)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
                     if result is not None:
                         await _handle_callback_output(result, producer)
@@ -258,9 +257,7 @@ class Node(Runner):
             ) -> None:
                 async with semaphore:
                     async with message_context as current_message:
-                        obj = message_to_pydantic_model(
-                            current_message, self._input_type
-                        )
+                        obj = message_to_pydantic_model(current_message, Bag)
                         result = cast(
                             CallbackOutputT,
                             await loop.run_in_executor(executor, self._callback, obj),
@@ -302,7 +299,6 @@ class Sink(Runner):
         self._connection_backoff_seconds = connection_backoff_seconds
         self._prefetch_count = prefetch_count
         self._clock = clock
-        self._input_type = _get_callback_input_type(self._callback)
 
     @property
     def name(self) -> str:
@@ -337,7 +333,7 @@ class Sink(Runner):
             clock=self._clock,
         ):
             async with message as current_message:
-                obj = message_to_pydantic_model(current_message, self._input_type)
+                obj = message_to_pydantic_model(current_message, Bag)
                 await cast(Awaitable[CallbackOutputT], self._callback(obj))
 
     async def _run_sync_callback(
@@ -355,7 +351,7 @@ class Sink(Runner):
         ) -> None:
             async with semaphore:
                 async with message_context as current_message:
-                    obj = message_to_pydantic_model(current_message, self._input_type)
+                    obj = message_to_pydantic_model(current_message, Bag)
                     await loop.run_in_executor(executor, self._callback, obj)
 
         async for message in consume(
@@ -517,11 +513,3 @@ def _validate_sink_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
     for kwarg_name, _ in kwargs.items():
         if kwarg_name not in get_type_hints(SinkKwargs):
             raise NodeKwargsInvalid(f"Invalid argument for sink node: {kwarg_name}")
-
-
-def _get_callback_input_type(callback: CallbackT) -> type[pydantic.BaseModel]:
-    hints = get_type_hints(callback)
-    input_type_name = next(iter(inspect.signature(callback).parameters), None)
-    if input_type_name is not None:
-        return hints[input_type_name]
-    return Bag
