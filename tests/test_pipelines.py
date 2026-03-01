@@ -5,7 +5,7 @@ from typing import AsyncGenerator, Optional, cast, Any
 import pytest
 from aio_pika.abc import AbstractRobustConnection
 
-from khnm.exceptions import NodeKwargsInvalid
+from khnm.exceptions import NodeKwargsInvalid, PipelineDefinitionInvalid
 from khnm.pipelines import make_pipeline
 from tests.doubles import (
     generate_random_numbers_async,
@@ -385,3 +385,10 @@ async def test_sink_node_kwargs_raises_exception_at_invalid_kwargs(
             .add("sink", lambda obj: None, **{kwarg_name: kwarg_value})
             .build()
         )
+
+
+async def test_pipeline_raises_exception_when_below_two_nodes(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    with pytest.raises(PipelineDefinitionInvalid):
+        (make_pipeline().add("source", generate_random_numbers_async).build())

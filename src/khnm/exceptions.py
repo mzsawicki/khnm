@@ -4,3 +4,7 @@ class UpstreamPipeUnavailable(Exception):
 
 class NodeKwargsInvalid(Exception):
     pass
+
+
+class PipelineDefinitionInvalid(Exception):
+    pass

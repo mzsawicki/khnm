@@ -26,7 +26,7 @@ from aio_pika.abc import AbstractRobustConnection, AbstractIncomingMessage
 from pydantic import BaseModel
 
 from khnm.consumers import consume
-from khnm.exceptions import NodeKwargsInvalid
+from khnm.exceptions import NodeKwargsInvalid, PipelineDefinitionInvalid
 from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
 from khnm.time import Clock, UtcClock
@@ -422,6 +422,8 @@ class PipelineBuilder:
         return self
 
     def build(self) -> Pipeline:
+        if len(self._runner_definitions) < 2:
+            raise PipelineDefinitionInvalid("Pipeline must have at least 2 nodes")
         definitions = list(self._runner_definitions)
         runners: List[Runner] = []
         source_definition = definitions.pop(0)
