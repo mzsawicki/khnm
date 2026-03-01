@@ -8,7 +8,6 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from khnm.config import KhnmSettings
 from tests.doubles import FakeClock
 from tests.utils import create_vhost, delete_vhost
 
@@ -53,19 +52,12 @@ async def rabbitmq_vhost(
 
 
 @pytest.fixture(scope="function")
-async def settings(
-    rabbitmq_host: str, rabbitmq_port: int, rabbitmq_vhost: str
-) -> KhnmSettings:
-    return KhnmSettings(
-        RABBITMQ_CONNECTION_STRING=f"amqp://guest:guest@{rabbitmq_host}:{rabbitmq_port}/{rabbitmq_vhost}"
-    )
-
-
-@pytest.fixture(scope="function")
 async def amqp_connection(
-    settings: KhnmSettings,
+    rabbitmq_host: str, rabbitmq_port: int, rabbitmq_vhost: str
 ) -> AsyncGenerator[AbstractRobustConnection, None]:
-    connection = await connect_robust(url=settings.RABBITMQ_CONNECTION_STRING)
+    connection = await connect_robust(
+        url=f"amqp://guest:guest@{rabbitmq_host}:{rabbitmq_port}/{rabbitmq_vhost}"
+    )
     yield connection
     await connection.close()
 
