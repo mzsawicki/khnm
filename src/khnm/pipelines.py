@@ -442,6 +442,7 @@ class PipelineBuilder:
                     **current_node_definition.kwargs,
                 )
             )
+        _validate_sink_kwargs(**next_node_definition.kwargs)
         runners.append(
             Sink(
                 name=next_node_definition.name,
@@ -509,4 +510,6 @@ def _validate_source_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
 
 
 def _validate_sink_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
-    pass
+    for kwarg_name, _ in kwargs.items():
+        if kwarg_name not in get_type_hints(SinkKwargs):
+            raise NodeKwargsInvalid(f"Invalid argument for sink node: {kwarg_name}")

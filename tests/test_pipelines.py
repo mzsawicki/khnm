@@ -359,3 +359,29 @@ async def test_source_node_kwargs_raises_exception_at_invalid_kwargs(
             .add("sink", lambda obj: None)
             .build()
         )
+
+
+@pytest.mark.parametrize(
+    "kwarg_name,kwarg_value",
+    [
+        ("pipe_length", 1),
+        ("durable", True),
+        ("backoff_seconds", 1),
+        ("max_retries", 1),
+        ("exponential_backoff", True),
+        ("max_backoff_seconds", 1.0),
+        ("apply_jitter", True),
+    ],
+)
+async def test_sink_node_kwargs_raises_exception_at_invalid_kwargs(
+    amqp_connection: AbstractRobustConnection,
+    kwarg_name: str,
+    kwarg_value: Any,
+) -> None:
+    with pytest.raises(NodeKwargsInvalid):
+        (
+            make_pipeline()
+            .add("source", generate_random_numbers_async)
+            .add("sink", lambda obj: None, **{kwarg_name: kwarg_value})
+            .build()
+        )
