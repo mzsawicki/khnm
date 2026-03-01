@@ -67,7 +67,7 @@ khnm my_app:pipeline printer
 
 A pipeline is an ordered chain of stages:
 
-- **Source** (first stage) -- a sync or async generator that produces messages
+- **Source** (first stage) -- a sync or async generator that produces messages. Runs until the generator is exhausted, then exits. It does not restart or reconnect; when the source process finishes, no further messages will be produced.
 - **Node** (middle stages) -- a sync or async function that consumes a message and returns one, many, or no output messages
 - **Sink** (last stage) -- a sync or async function that consumes messages without forwarding
 
