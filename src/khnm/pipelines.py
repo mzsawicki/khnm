@@ -105,6 +105,7 @@ class Source(Runner):
             exponential_backoff=self._exponential_backoff,
             max_backoff_seconds=self._max_backoff_seconds,
             apply_jitter=self._apply_jitter,
+            persistent_messages=self._durable,
             clock=self._clock,
         ) as producer:
             async for obj in cast(
@@ -130,6 +131,7 @@ class Source(Runner):
             exponential_backoff=self._exponential_backoff,
             max_backoff_seconds=self._max_backoff_seconds,
             apply_jitter=self._apply_jitter,
+            persistent_messages=self._durable,
             clock=self._clock,
         ) as producer:
             generator = cast(Generator[CallbackOutputT, None, None], self._callback())
@@ -214,6 +216,7 @@ class Node(Runner):
             exponential_backoff=self._exponential_backoff,
             max_backoff_seconds=self._max_backoff_seconds,
             apply_jitter=self._apply_jitter,
+            persistent_messages=self._durable,
             clock=self._clock,
         ) as producer:
             async for message in consume(
@@ -247,6 +250,7 @@ class Node(Runner):
             exponential_backoff=self._exponential_backoff,
             max_backoff_seconds=self._max_backoff_seconds,
             apply_jitter=self._apply_jitter,
+            persistent_messages=self._durable,
             clock=self._clock,
         ) as producer:
             semaphore = asyncio.Semaphore(threads)

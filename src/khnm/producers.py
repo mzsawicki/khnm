@@ -71,6 +71,7 @@ async def make_producer(
     exponential_backoff: bool = False,
     max_backoff_seconds: Optional[float] = None,
     apply_jitter: bool = False,
+    persistent_messages: bool = False,
     clock: Clock = UtcClock(),
     sender: SenderT = send_message,
 ) -> AsyncGenerator[Producer, None]:
@@ -85,6 +86,7 @@ async def make_producer(
             exponential_backoff=exponential_backoff,
             max_backoff_seconds=max_backoff_seconds,
             apply_jitter=apply_jitter,
+            persistent_messages=persistent_messages,
             clock=clock,
             sender=sender,
         )
