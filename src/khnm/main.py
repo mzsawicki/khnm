@@ -50,7 +50,12 @@ def main() -> None:
     args = parser.parse_args()
 
     conn_string = os.getenv("RABBITMQ_URL")
-    assert conn_string
+    if not conn_string:
+        raise SystemExit("RABBITMQ_URL not set")
+    if args.tasks < 1:
+        raise SystemExit("Number of tasks must be greater than 0")
+    if args.threads < 1:
+        raise SystemExit("Number of threads must be greater than 0")
 
     pipeline = load_pipeline_object(args.pipeline)
     asyncio.run(run_node(pipeline, args.node, conn_string, args.tasks, args.threads))
