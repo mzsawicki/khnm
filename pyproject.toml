@@ -5,7 +5,6 @@ description = "Micro-framework for implementing data pipelines over RabbitMQ"
 requires-python = ">=3.14"
 dependencies = [
     "aio-pika>=9.5.8",
-    "pika>=1.3.2",
     "pydantic>=2.12.5",
 ]
 
@@ -15,6 +14,7 @@ khnm = "khnm.main:main"
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pika>=1.3.2",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
