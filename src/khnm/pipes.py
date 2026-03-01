@@ -68,41 +68,17 @@ async def send_with_backoff(
 ) -> SuccessT:
     retries = 0
     sent = await sender(channel, message, pipe, persistent)
-    if max_retries is None:
-        while not sent:
-            wait_time_seconds = (
-                backoff_seconds
-                if not exponential_backoff
-                else backoff_seconds * pow(2, retries)
-            )
-            if (
-                max_backoff_seconds is not None
-                and wait_time_seconds > max_backoff_seconds
-            ):
-                wait_time_seconds = max_backoff_seconds
-            if apply_jitter:
-                wait_time_seconds = random.uniform(0, wait_time_seconds)
-            await clock.sleep(wait_time_seconds)
-            sent = await sender(channel, message, pipe, persistent)
-            retries += 1
-    else:
-        while not sent and retries < max_retries:
-            sent = await sender(channel, message, pipe, persistent)
-            if not sent:
-                wait_time_seconds = (
-                    backoff_seconds
-                    if not exponential_backoff
-                    else backoff_seconds * pow(2, retries)
-                )
-                if (
-                    max_backoff_seconds is not None
-                    and wait_time_seconds > max_backoff_seconds
-                ):
-                    wait_time_seconds = max_backoff_seconds
-                if apply_jitter:
-                    wait_time_seconds = random.uniform(0, wait_time_seconds)
-                await clock.sleep(wait_time_seconds)
-                retries += 1
+    while not sent and (max_retries is None or retries < max_retries):
+        wait = _calculate_backoff(
+            retries,
+            backoff_seconds,
+            exponential_backoff,
+            max_backoff_seconds,
+            apply_jitter,
+        )
+        await clock.sleep(wait)
+        sent = await sender(channel, message, pipe, persistent)
+        retries += 1
     return sent
 
 
@@ -129,6 +105,25 @@ async def wait_for_pipe(
         return await _wait_for_queue_with_backoff(
             channel, queue, max_retries, backoff_seconds, clock, getter
         )
+
+
+def _calculate_backoff(
+    retries: int,
+    backoff_seconds: float,
+    exponential_backoff: bool,
+    max_backoff_seconds: Optional[float],
+    apply_jitter: bool,
+) -> float:
+    wait_time_seconds = (
+        backoff_seconds
+        if not exponential_backoff
+        else backoff_seconds * pow(2, retries)
+    )
+    if max_backoff_seconds is not None and wait_time_seconds > max_backoff_seconds:
+        wait_time_seconds = max_backoff_seconds
+    if apply_jitter:
+        wait_time_seconds = random.uniform(0, wait_time_seconds)
+    return wait_time_seconds
 
 
 async def _wait_for_queue_infinitely(
