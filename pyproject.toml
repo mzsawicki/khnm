@@ -7,8 +7,6 @@ dependencies = [
     "aio-pika>=9.5.8",
     "pika>=1.3.2",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.12.0",
-    "pytest-asyncio>=1.3.0",
 ]
 
 [project.scripts]
