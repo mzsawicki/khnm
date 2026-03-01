@@ -70,7 +70,7 @@ class SampleNestedObject(pydantic.BaseModel):
 
 
 class SampleDataObject(pydantic.BaseModel):
-    guid: uuid.UUID = uuid.uuid4()
+    guid: uuid.UUID = pydantic.Field(default_factory=uuid.uuid4)
     text: str = "Hello World"
     time: datetime.datetime = datetime.datetime(2026, 1, 1, 12, 34, 56)
     integer: int = 1
