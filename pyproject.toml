@@ -1,7 +1,7 @@
 [project]
 name = "khnm"
 version = "0.1.0"
-description = "Add your description here"
+description = "Micro-framework for implementing data pipelines over RabbitMQ"
 requires-python = ">=3.14"
 dependencies = [
     "aio-pika>=9.5.8",
