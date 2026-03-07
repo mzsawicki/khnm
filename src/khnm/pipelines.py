@@ -410,6 +410,20 @@ class RunnerDefinition:
     kwargs: NodeKwargs = field(default_factory=NodeKwargs)
 
 
+class Pipeline:
+    def __init__(self, runners: List[Runner]) -> None:
+        self._runners = runners
+        self._runners_map = {runner.name: runner for runner in runners}
+
+    async def run(
+        self, connection: AbstractRobustConnection, name: str, threads: int = 1
+    ) -> None:
+        runner = self._runners_map.get(name)
+        if not runner:
+            raise ValueError(f"Runner {name} not found in the pipeline")
+        await runner.run(connection, threads)
+
+
 class PipelineBuilder:
     def __init__(self, name: Optional[str] = None) -> None:
         self._name = name
@@ -470,20 +484,6 @@ class PipelineBuilder:
             )
         )
         return Pipeline(runners)
-
-
-class Pipeline:
-    def __init__(self, runners: List[Runner]) -> None:
-        self._runners = runners
-        self._runners_map = {runner.name: runner for runner in runners}
-
-    async def run(
-        self, connection: AbstractRobustConnection, name: str, threads: int = 1
-    ) -> None:
-        runner = self._runners_map.get(name)
-        if not runner:
-            raise ValueError(f"Runner {name} not found in the pipeline")
-        await runner.run(connection, threads)
 
 
 def make_pipeline(name: Optional[str] = None) -> PipelineBuilder:
