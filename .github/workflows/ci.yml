@@ -1,4 +1,4 @@
-name: Test
+name: Test and publish
 
 on:
   push:
@@ -26,3 +26,21 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
