@@ -113,9 +113,12 @@ class Source(Runner):
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
         async with self._make_producer(connection) as producer:
-            async for obj in cast(
-                AsyncGenerator[CallbackOutputT, None], self._callback()
-            ):
+            callback_generator = self._callback()
+            if not isinstance(callback_generator, AsyncGenerator):
+                raise TypeError(
+                    f"Expected AsyncGenerator as callback, got: {type(callback_generator)}"
+                )
+            async for obj in callback_generator:
                 if not isinstance(obj, pydantic.BaseModel):
                     raise TypeError(
                         f"Source callback must yield BaseModel instances, got {type(obj).__name__}"
