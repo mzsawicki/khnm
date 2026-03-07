@@ -94,8 +94,10 @@ class Source(Runner):
         with ThreadPoolExecutor(max_workers=threads) as executor:
             await self._run_sync_callback(connection, loop, executor)
 
-    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(
+    def _make_producer(
+        self, connection: AbstractRobustConnection
+    ) -> AsyncContextManager[Producer]:
+        return make_producer(
             connection,
             self._downstream_pipe,
             size=self._pipe_length,
@@ -107,7 +109,10 @@ class Source(Runner):
             apply_jitter=self._apply_jitter,
             persistent_messages=self._durable,
             clock=self._clock,
-        ) as producer:
+        )
+
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async with self._make_producer(connection) as producer:
             async for obj in cast(
                 AsyncGenerator[CallbackOutputT, None], self._callback()
             ):
@@ -124,19 +129,7 @@ class Source(Runner):
         loop: AbstractEventLoop,
         executor: ThreadPoolExecutor,
     ) -> None:
-        async with make_producer(
-            connection,
-            self._downstream_pipe,
-            size=self._pipe_length,
-            durable=self._durable,
-            backoff_seconds=self._backoff_seconds,
-            max_retries=self._max_retries,
-            exponential_backoff=self._exponential_backoff,
-            max_backoff_seconds=self._max_backoff_seconds,
-            apply_jitter=self._apply_jitter,
-            persistent_messages=self._durable,
-            clock=self._clock,
-        ) as producer:
+        async with self._make_producer(connection) as producer:
             generator = cast(Generator[CallbackOutputT, None, None], self._callback())
             sentinel = object()
             while True:
@@ -211,8 +204,10 @@ class Node(Runner):
             while True:
                 await self._run_sync_callback(connection, loop, executor, threads)
 
-    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async with make_producer(
+    def _make_producer(
+        self, connection: AbstractRobustConnection
+    ) -> AsyncContextManager[Producer]:
+        return make_producer(
             connection,
             self._downstream_pipe,
             size=self._pipe_length,
@@ -224,15 +219,23 @@ class Node(Runner):
             apply_jitter=self._apply_jitter,
             persistent_messages=self._durable,
             clock=self._clock,
-        ) as producer:
-            async for message in consume(
-                connection,
-                self._upstream_pipe,
-                upstream_connection_max_retries=self._connection_max_retries,
-                upstream_connection_backoff_seconds=self._connection_backoff_seconds,
-                prefetch_count=self._prefetch_count,
-                clock=self._clock,
-            ):
+        )
+
+    def _consume(
+        self, connection: AbstractRobustConnection
+    ) -> AsyncGenerator[AsyncContextManager[AbstractIncomingMessage], None]:
+        return consume(
+            connection,
+            self._upstream_pipe,
+            upstream_connection_max_retries=self._connection_max_retries,
+            upstream_connection_backoff_seconds=self._connection_backoff_seconds,
+            prefetch_count=self._prefetch_count,
+            clock=self._clock,
+        )
+
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async with self._make_producer(connection) as producer:
+            async for message in self._consume(connection):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
                     result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
@@ -246,49 +249,21 @@ class Node(Runner):
         executor: ThreadPoolExecutor,
         threads: int,
     ) -> None:
-        async with make_producer(
-            connection,
-            self._downstream_pipe,
-            size=self._pipe_length,
-            durable=self._durable,
-            backoff_seconds=self._backoff_seconds,
-            max_retries=self._max_retries,
-            exponential_backoff=self._exponential_backoff,
-            max_backoff_seconds=self._max_backoff_seconds,
-            apply_jitter=self._apply_jitter,
-            persistent_messages=self._durable,
-            clock=self._clock,
-        ) as producer:
-            semaphore = asyncio.Semaphore(threads)
-            pending = set()
+        async with self._make_producer(connection) as producer:
 
             async def process(
                 message_context: AsyncContextManager[AbstractIncomingMessage],
             ) -> None:
-                async with semaphore:
-                    async with message_context as current_message:
-                        obj = message_to_pydantic_model(current_message, Bag)
-                        result = cast(
-                            CallbackOutputT,
-                            await loop.run_in_executor(executor, self._callback, obj),
-                        )
-                        if result is not None:
-                            await _handle_callback_output(result, producer)
+                async with message_context as current_message:
+                    obj = message_to_pydantic_model(current_message, Bag)
+                    result = cast(
+                        CallbackOutputT,
+                        await loop.run_in_executor(executor, self._callback, obj),
+                    )
+                    if result is not None:
+                        await _handle_callback_output(result, producer)
 
-            async for message in consume(
-                connection,
-                self._upstream_pipe,
-                upstream_connection_max_retries=self._connection_max_retries,
-                upstream_connection_backoff_seconds=self._connection_backoff_seconds,
-                prefetch_count=self._prefetch_count,
-                clock=self._clock,
-            ):
-                task = asyncio.create_task(process(message))
-                pending.add(task)
-                task.add_done_callback(pending.discard)
-
-            if pending:
-                await asyncio.gather(*pending)
+            await _dispatch_concurrent(self._consume(connection), threads, process)
 
 
 class Sink(Runner):
@@ -333,15 +308,20 @@ class Sink(Runner):
             while True:
                 await self._run_sync_callback(connection, loop, executor, threads)
 
-    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async for message in consume(
+    def _consume(
+        self, connection: AbstractRobustConnection
+    ) -> AsyncGenerator[AsyncContextManager[AbstractIncomingMessage], None]:
+        return consume(
             connection,
             self._upstream_pipe,
             upstream_connection_max_retries=self._connection_max_retries,
             upstream_connection_backoff_seconds=self._connection_backoff_seconds,
             prefetch_count=self._prefetch_count,
             clock=self._clock,
-        ):
+        )
+
+    async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
+        async for message in self._consume(connection):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
                 await cast(Awaitable[CallbackOutputT], self._callback(obj))
@@ -353,31 +333,14 @@ class Sink(Runner):
         executor: ThreadPoolExecutor,
         threads: int,
     ) -> None:
-        semaphore = asyncio.Semaphore(threads)
-        pending = set()
-
         async def process(
             message_context: AsyncContextManager[AbstractIncomingMessage],
         ) -> None:
-            async with semaphore:
-                async with message_context as current_message:
-                    obj = message_to_pydantic_model(current_message, Bag)
-                    await loop.run_in_executor(executor, self._callback, obj)
+            async with message_context as current_message:
+                obj = message_to_pydantic_model(current_message, Bag)
+                await loop.run_in_executor(executor, self._callback, obj)
 
-        async for message in consume(
-            connection,
-            self._upstream_pipe,
-            upstream_connection_max_retries=self._connection_max_retries,
-            upstream_connection_backoff_seconds=self._connection_backoff_seconds,
-            prefetch_count=self._prefetch_count,
-            clock=self._clock,
-        ):
-            task = asyncio.create_task(process(message))
-            pending.add(task)
-            task.add_done_callback(pending.discard)
-
-        if pending:
-            await asyncio.gather(*pending)
+        await _dispatch_concurrent(self._consume(connection), threads, process)
 
 
 class SinkKwargs(TypedDict, total=False):
@@ -488,6 +451,31 @@ class PipelineBuilder:
 
 def make_pipeline(name: Optional[str] = None) -> PipelineBuilder:
     return PipelineBuilder(name)
+
+
+async def _dispatch_concurrent(
+    consume_iter: AsyncGenerator[AsyncContextManager[AbstractIncomingMessage], None],
+    threads: int,
+    process_fn: Callable[
+        [AsyncContextManager[AbstractIncomingMessage]], Awaitable[None]
+    ],
+) -> None:
+    semaphore = asyncio.Semaphore(threads)
+    pending = set()
+
+    async def gated(
+        message_context: AsyncContextManager[AbstractIncomingMessage],
+    ) -> None:
+        async with semaphore:
+            await process_fn(message_context)
+
+    async for message in consume_iter:
+        task = asyncio.create_task(gated(message))
+        pending.add(task)
+        task.add_done_callback(pending.discard)
+
+    if pending:
+        await asyncio.gather(*pending)
 
 
 async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:
