@@ -337,7 +337,12 @@ class Sink(Runner):
         async for message in self._consume(connection):
             async with message as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
-                await cast(Awaitable[CallbackOutputT], self._callback(obj))
+                awaitable = self._callback(obj)
+                if not isinstance(awaitable, Awaitable):
+                    raise TypeError(
+                        f"Expected callback to be awaitable, got {type(awaitable).__name__}"
+                    )
+                await awaitable
 
     async def _run_sync_callback(
         self,
