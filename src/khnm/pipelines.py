@@ -133,11 +133,15 @@ class Source(Runner):
         executor: ThreadPoolExecutor,
     ) -> None:
         async with self._make_producer(connection) as producer:
-            generator = cast(Generator[CallbackOutputT, None, None], self._callback())
+            callback_generator = self._callback()
+            if not isinstance(callback_generator, Generator):
+                raise TypeError(
+                    f"Expected Generator as callback, got: {type(callback_generator)}"
+                )
             sentinel = object()
             while True:
                 obj = await loop.run_in_executor(
-                    executor, lambda: next(generator, sentinel)
+                    executor, lambda: next(callback_generator, sentinel)
                 )
                 if obj is sentinel:
                     break
