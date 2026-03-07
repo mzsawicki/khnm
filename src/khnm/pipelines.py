@@ -268,10 +268,11 @@ class Node(Runner):
             ) -> None:
                 async with message_context as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
-                    result = cast(
-                        CallbackOutputT,
-                        await loop.run_in_executor(executor, self._callback, obj),
-                    )
+                    if not isinstance(self._callback, Callable):
+                        raise TypeError(
+                            f"Expected callback to be callable, got {type(self._callback)}"
+                        )
+                    result = await loop.run_in_executor(executor, self._callback, obj)
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
