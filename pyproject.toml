@@ -1,6 +1,6 @@
 [project]
 name = "khnm"
-version = "1.0.0"
+version = "1.1.5"
 description = "Micro-framework for implementing data pipelines over RabbitMQ"
 requires-python = ">=3.12"
 dependencies = [
