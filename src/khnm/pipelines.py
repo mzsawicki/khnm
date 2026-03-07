@@ -422,7 +422,7 @@ class PipelineBuilder:
             full_name = name
         self._runner_definitions.append(
             RunnerDefinition(
-                name=full_name, callback=callback, kwargs=cast(NodeKwargs, kwargs)
+                name=full_name, callback=callback, kwargs=NodeKwargs(**kwargs)
             )
         )
         return self
