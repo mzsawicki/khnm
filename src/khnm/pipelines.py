@@ -245,7 +245,12 @@ class Node(Runner):
             async for message in self._consume(connection):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
-                    result = await cast(Awaitable[CallbackOutputT], self._callback(obj))
+                    awaitable = self._callback(obj)
+                    if not isinstance(awaitable, Awaitable):
+                        raise TypeError(
+                            f"Expected callback to be awaitable, got {type(awaitable)}"
+                        )
+                    result = await awaitable
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
