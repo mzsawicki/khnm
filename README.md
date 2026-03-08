@@ -46,9 +46,9 @@ def print_result(result: Result) -> None:
 
 pipeline = (
     khnm.make_pipeline()
-    .add("generator", generate, pipe_length=128)
-    .add("splitter", split, pipe_length=128, prefetch_count=1)
-    .add("printer", print_result, prefetch_count=1)
+    .source("generator", generate, pipe_length=128)
+    .node("splitter", split, pipe_length=128, prefetch_count=1)
+    .sink("printer", print_result, prefetch_count=1)
     .build()
 )
 ```
@@ -117,22 +117,22 @@ This offloads blocking sync callbacks to a `ThreadPoolExecutor`, preventing them
 
 ## Per-stage options
 
-Options are passed as keyword arguments to `.add()`:
+Options are passed as keyword arguments to `.source()`, `.node()`, and `.sink()`:
 
 ```python
 khnm.make_pipeline()
-    .add("source", generate, pipe_length=256, durable=True)
-    .add("worker", process,
-         pipe_length=128,
-         prefetch_count=10,
-         backoff_seconds=0.5,
-         max_retries=5,
-         exponential_backoff=True,
-         max_backoff_seconds=30.0,
-         apply_jitter=True,
-         connection_max_retries=10,
-         connection_backoff_seconds=2.0)
-    .add("sink", output, prefetch_count=1)
+    .source("source", generate, pipe_length=256, durable=True)
+    .node("worker", process,
+          pipe_length=128,
+          prefetch_count=10,
+          backoff_seconds=0.5,
+          max_retries=5,
+          exponential_backoff=True,
+          max_backoff_seconds=30.0,
+          apply_jitter=True,
+          connection_max_retries=10,
+          connection_backoff_seconds=2.0)
+    .sink("output", output, prefetch_count=1)
     .build()
 ```
 
