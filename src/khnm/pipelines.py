@@ -385,10 +385,17 @@ RunnerKwargs = Union[SourceKwargs, SinkKwargs, NodeKwargs]
 
 
 @dataclass(init=True, frozen=True)
-class RunnerDefinition:
+class SourceDefinition:
     name: str
-    callback: Union[CallbackT, GeneratorCallbackT]
-    kwargs: NodeKwargs = field(default_factory=NodeKwargs)
+    callback: GeneratorCallbackT
+    kwargs: SourceKwargs = field(default_factory=SourceKwargs)
+
+
+@dataclass(init=True, frozen=True)
+class NodeDefinition:
+    name: str
+    callback: CallbackT
+    kwargs: SinkKwargs = field(default_factory=NodeKwargs)
 
 
 class Pipeline:
@@ -408,60 +415,80 @@ class Pipeline:
 class PipelineBuilder:
     def __init__(self, name: Optional[str] = None) -> None:
         self._name = name
-        self._runner_definitions: List[RunnerDefinition] = []
+        self._source_definition: Optional[SourceDefinition] = None
+        self._node_definitions: List[NodeDefinition] = []
+        self._sink_definition: Optional[NodeDefinition] = None
 
-    def add(
-        self,
-        name: str,
-        callback: Union[GeneratorCallbackT, CallbackT],
-        **kwargs: Unpack[NodeKwargs],
+    def source(
+        self, name: str, callback: GeneratorCallbackT, **kwargs: Unpack[SourceKwargs]
     ) -> Self:
-        if self._name:
-            full_name = f"{self._name}.{name}"
-        else:
-            full_name = name
-        self._runner_definitions.append(
-            RunnerDefinition(
+        _validate_source_kwargs(**kwargs)
+        full_name = _determine_full_node_name(name, self._name)
+        self._source_definition = SourceDefinition(
+            name=full_name, callback=callback, kwargs=SourceKwargs(**kwargs)
+        )
+        return self
+
+    def node(
+        self, name: str, callback: CallbackT, **kwargs: Unpack[NodeKwargs]
+    ) -> Self:
+        full_name = _determine_full_node_name(name, self._name)
+        self._node_definitions.append(
+            NodeDefinition(
                 name=full_name, callback=callback, kwargs=NodeKwargs(**kwargs)
             )
         )
         return self
 
+    def sink(
+        self, name: str, callback: CallbackT, **kwargs: Unpack[SinkKwargs]
+    ) -> Self:
+        _validate_sink_kwargs(**kwargs)
+        full_name = _determine_full_node_name(name, self._name)
+        self._sink_definition = NodeDefinition(
+            name=full_name, callback=callback, kwargs=SinkKwargs(**kwargs)
+        )
+        return self
+
     def build(self) -> Pipeline:
-        if len(self._runner_definitions) < 2:
-            raise PipelineDefinitionInvalid("Pipeline must have at least 2 nodes")
-        definitions = list(self._runner_definitions)
+        if self._source_definition is None or self._sink_definition is None:
+            raise PipelineDefinitionInvalid(
+                "Pipeline must have at least source and sink"
+            )
+        node_definitions = list(self._node_definitions)
         runners: List[Runner] = []
-        source_definition = definitions.pop(0)
-        next_node_definition = definitions.pop(0)
-        _validate_source_kwargs(**source_definition.kwargs)
+        first_downstream = (
+            node_definitions[0].name if node_definitions else self._sink_definition.name
+        )
         runners.append(
             Source(
-                name=source_definition.name,
-                downstream_pipe=next_node_definition.name,
-                callback=cast(GeneratorCallbackT, source_definition.callback),
-                **cast(SourceKwargs, source_definition.kwargs),
+                name=self._source_definition.name,
+                downstream_pipe=first_downstream,
+                callback=self._source_definition.callback,
+                **self._source_definition.kwargs,
             )
         )
-        while definitions:
-            current_node_definition = next_node_definition
-            next_node_definition = definitions.pop(0)
+        for i, node_def in enumerate(node_definitions):
+            downstream = (
+                node_definitions[i + 1]
+                if i + 1 < len(node_definitions)
+                else self._sink_definition
+            )
             runners.append(
                 Node(
-                    name=current_node_definition.name,
-                    upstream_pipe=current_node_definition.name,
-                    downstream_pipe=next_node_definition.name,
-                    callback=cast(CallbackT, current_node_definition.callback),
-                    **current_node_definition.kwargs,
+                    name=node_def.name,
+                    upstream_pipe=node_def.name,
+                    downstream_pipe=downstream.name,
+                    callback=node_def.callback,
+                    **node_def.kwargs,
                 )
             )
-        _validate_sink_kwargs(**next_node_definition.kwargs)
         runners.append(
             Sink(
-                name=next_node_definition.name,
-                upstream_pipe=next_node_definition.name,
-                callback=cast(CallbackT, next_node_definition.callback),
-                **cast(SinkKwargs, next_node_definition.kwargs),
+                name=self._sink_definition.name,
+                upstream_pipe=self._sink_definition.name,
+                callback=self._sink_definition.callback,
+                **self._sink_definition.kwargs,
             )
         )
         return Pipeline(runners)
@@ -540,3 +567,12 @@ def _validate_sink_kwargs(**kwargs: Unpack[NodeKwargs]) -> None:
     for kwarg_name, _ in kwargs.items():
         if kwarg_name not in get_type_hints(SinkKwargs):
             raise NodeKwargsInvalid(f"Invalid argument for sink node: {kwarg_name}")
+
+
+def _determine_full_node_name(
+    node_name: str, pipeline_name: Optional[str] = None
+) -> str:
+    if pipeline_name is not None:
+        return f"{pipeline_name}.{node_name}"
+    else:
+        return node_name

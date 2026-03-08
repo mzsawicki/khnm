@@ -23,9 +23,9 @@ async def test_pipeline_sends_messages_source_to_sink(
 
     pipeline = (
         make_pipeline()
-        .add("test-source", generate_random_numbers_async)
-        .add("test-node", async_callback_stub)
-        .add("test-sink", spy)
+        .source("test-source", generate_random_numbers_async)
+        .node("test-node", async_callback_stub)
+        .sink("test-sink", spy)
         .build()
     )
 
@@ -53,10 +53,10 @@ async def test_pipeline_with_multiple_intermediate_nodes(
 
     pipeline = (
         make_pipeline()
-        .add("test-source", generate_random_numbers_async)
-        .add("test-node-1", async_callback_stub)
-        .add("test-node-2", async_callback_stub)
-        .add("test-sink", spy)
+        .source("test-source", generate_random_numbers_async)
+        .node("test-node-1", async_callback_stub)
+        .node("test-node-2", async_callback_stub)
+        .sink("test-sink", spy)
         .build()
     )
 
@@ -94,10 +94,10 @@ async def test_processing_through_pipeline_gives_correct_result(
 
     pipeline = (
         make_pipeline()
-        .add("number-source", generate_1)
-        .add("add", add)
-        .add("multiply", multiply)
-        .add("result", spy)
+        .source("number-source", generate_1)
+        .node("add", add)
+        .node("multiply", multiply)
+        .sink("result", spy)
         .build()
     )
 
@@ -139,10 +139,10 @@ async def test_processing_through_pipeline_gives_correct_result_with_custom_para
 
     pipeline = (
         make_pipeline()
-        .add("number-source", generate_1, pipe_length=128)
-        .add("add", add, pipe_length=256)
-        .add("multiply", multiply, pipe_length=512)
-        .add("result", spy)
+        .source("number-source", generate_1, pipe_length=128)
+        .node("add", add, pipe_length=256)
+        .node("multiply", multiply, pipe_length=512)
+        .sink("result", spy)
         .build()
     )
 
@@ -190,9 +190,9 @@ async def test_node_runs_on_multiple_threads(
 
     pipeline = (
         make_pipeline()
-        .add("source", generate_random_numbers_async)
-        .add("node", slow_callback)
-        .add("sink", spy)
+        .source("source", generate_random_numbers_async)
+        .node("node", slow_callback)
+        .sink("sink", spy)
         .build()
     )
 
@@ -231,9 +231,9 @@ async def test_sequential_node_is_detected_by_barrier(
 
     pipeline = (
         make_pipeline()
-        .add("source", generate_random_numbers_async)
-        .add("node", slow_callback)
-        .add("sink", spy)
+        .source("source", generate_random_numbers_async)
+        .node("node", slow_callback)
+        .sink("sink", spy)
         .build()
     )
 
@@ -274,8 +274,8 @@ async def test_sink_runs_on_multiple_threads(
 
     pipeline = (
         make_pipeline()
-        .add("source", generate_random_numbers_async)
-        .add("sink", sink_callback)
+        .source("source", generate_random_numbers_async)
+        .sink("sink", sink_callback)
         .build()
     )
 
@@ -313,8 +313,8 @@ async def test_sequential_sink_is_detected_by_barrier(
 
     pipeline = (
         make_pipeline()
-        .add("source", generate_random_numbers_async)
-        .add("sink", sink_callback)
+        .source("source", generate_random_numbers_async)
+        .sink("sink", sink_callback)
         .build()
     )
 
@@ -355,8 +355,10 @@ async def test_source_node_kwargs_raises_exception_at_invalid_kwargs(
     with pytest.raises(NodeKwargsInvalid):
         (
             make_pipeline()
-            .add("source", generate_random_numbers_async, **{kwarg_name: kwarg_value})
-            .add("sink", lambda obj: None)
+            .source(
+                "source", generate_random_numbers_async, **{kwarg_name: kwarg_value}
+            )
+            .sink("sink", lambda obj: None)
             .build()
         )
 
@@ -381,8 +383,8 @@ async def test_sink_node_kwargs_raises_exception_at_invalid_kwargs(
     with pytest.raises(NodeKwargsInvalid):
         (
             make_pipeline()
-            .add("source", generate_random_numbers_async)
-            .add("sink", lambda obj: None, **{kwarg_name: kwarg_value})
+            .source("source", generate_random_numbers_async)
+            .sink("sink", lambda obj: None, **{kwarg_name: kwarg_value})
             .build()
         )
 
@@ -391,4 +393,4 @@ async def test_pipeline_raises_exception_when_below_two_nodes(
     amqp_connection: AbstractRobustConnection,
 ) -> None:
     with pytest.raises(PipelineDefinitionInvalid):
-        (make_pipeline().add("source", generate_random_numbers_async).build())
+        (make_pipeline().source("source", generate_random_numbers_async).build())
