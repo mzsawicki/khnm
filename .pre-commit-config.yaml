@@ -4,13 +4,13 @@ repos:
     hooks:
       - id: ty
         name: ty
-        entry: "ty check"
+        entry: "uv run ty check"
         language: system
         pass_filenames: false
         always_run: true
       - id: ruff
         name: ruff
-        entry: "ruff format ."
+        entry: "uv run ruff format ."
         language: system
         pass_filenames: false
         always_run: true

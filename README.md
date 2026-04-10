@@ -4,7 +4,7 @@ A pipeline framework for building message-processing workflows on top of RabbitM
 
 ## Requirements
 
-- Python >= 3.14
+- Python >= 3.12
 - RabbitMQ
 
 ## Installation
