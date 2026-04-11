@@ -22,11 +22,13 @@ from typing import (
 )
 
 import pydantic
+from aio_pika import Message
 from aio_pika.abc import AbstractRobustConnection, AbstractIncomingMessage
 from pydantic import BaseModel
 
 from khnm.consumers import consume
 from khnm.exceptions import NodeKwargsInvalid, PipelineDefinitionInvalid
+from khnm.pipes import get_dlq_name, get_queue_name
 from khnm.producers import make_producer, Producer
 from khnm.serialization import pydantic_model_to_message, message_to_pydantic_model
 from khnm.time import Clock, UtcClock
@@ -170,6 +172,8 @@ class Node(Runner):
         connection_max_retries: Optional[int] = None,
         connection_backoff_seconds: float = 1.0,
         prefetch_count: Optional[int] = None,
+        dlq: bool = True,
+        max_callback_retries: int = 3,
         clock: Clock = UtcClock(),
     ) -> None:
         self._name = name
@@ -186,6 +190,8 @@ class Node(Runner):
         self._connection_max_retries = connection_max_retries
         self._connection_backoff_seconds = connection_backoff_seconds
         self._prefetch_count = prefetch_count
+        self._dlq = dlq
+        self._max_callback_retries = max_callback_retries
         self._clock = clock
 
     @property
@@ -211,9 +217,11 @@ class Node(Runner):
             while True:
                 await self._run_sync_callback(connection, loop, executor, threads)
 
-    def _make_producer(
+    async def _make_producer(
         self, connection: AbstractRobustConnection
     ) -> AsyncContextManager[Producer]:
+        if self._dlq:
+            await self._make_dlq(connection)
         return make_producer(
             connection,
             self._downstream_pipe,
@@ -228,6 +236,10 @@ class Node(Runner):
             clock=self._clock,
         )
 
+    async def _make_dlq(self, connection: AbstractRobustConnection) -> None:
+        async with connection.channel() as channel:
+            await channel.declare_queue(get_dlq_name(self._name), durable=True)
+
     def _consume(
         self, connection: AbstractRobustConnection
     ) -> AsyncGenerator[AsyncContextManager[AbstractIncomingMessage], None]:
@@ -241,7 +253,7 @@ class Node(Runner):
         )
 
     async def _run_async_callback(self, connection: AbstractRobustConnection) -> None:
-        async with self._make_producer(connection) as producer:
+        async with await self._make_producer(connection) as producer:
             async for message in self._consume(connection):
                 async with message as current_message:
                     obj = message_to_pydantic_model(current_message, Bag)
@@ -261,7 +273,7 @@ class Node(Runner):
         executor: ThreadPoolExecutor,
         threads: int,
     ) -> None:
-        async with self._make_producer(connection) as producer:
+        async with await self._make_producer(connection) as producer:
 
             async def process(
                 message_context: AsyncContextManager[AbstractIncomingMessage],
@@ -272,11 +284,33 @@ class Node(Runner):
                         raise TypeError(
                             f"Expected callback to be callable, got {type(self._callback)}"
                         )
-                    result = await loop.run_in_executor(executor, self._callback, obj)
+                    try:
+                        result = await loop.run_in_executor(
+                            executor, self._callback, obj
+                        )
+                    except Exception:
+                        await self._handle_callback_failure(connection, current_message)
+                        return
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
             await _dispatch_concurrent(self._consume(connection), threads, process)
+
+    async def _handle_callback_failure(
+        self, connection: AbstractRobustConnection, message: AbstractIncomingMessage
+    ) -> None:
+        retry_count_header = message.headers.get("x-callback-retry-count", 0)
+        retry_count = retry_count_header if isinstance(retry_count_header, int) else 0
+        new_headers = {**message.headers, "x-callback-retry-count": retry_count + 1}
+        new_message = Message(body=message.body, headers=new_headers)
+        if retry_count < self._max_callback_retries:
+            target_queue = get_queue_name(self._upstream_pipe)
+        else:
+            target_queue = get_dlq_name(self._name)
+        async with connection.channel() as channel:
+            await channel.default_exchange.publish(
+                new_message, routing_key=target_queue
+            )
 
 
 class Sink(Runner):
@@ -288,6 +322,8 @@ class Sink(Runner):
         connection_max_retries: Optional[int] = None,
         connection_backoff_seconds: float = 1.0,
         prefetch_count: Optional[int] = None,
+        dlq: bool = True,
+        max_callback_retries: int = 0,
         clock: Clock = UtcClock(),
     ) -> None:
         self._name = name
@@ -296,6 +332,8 @@ class Sink(Runner):
         self._connection_max_retries = connection_max_retries
         self._connection_backoff_seconds = connection_backoff_seconds
         self._prefetch_count = prefetch_count
+        self._dlq = dlq
+        self._max_callback_retries = max_callback_retries
         self._clock = clock
 
     @property
@@ -365,6 +403,8 @@ class SinkKwargs(TypedDict, total=False):
     connection_max_retries: int
     connection_backoff_seconds: float
     prefetch_count: int
+    dlq: bool
+    max_callback_retries: int
 
 
 class SourceKwargs(TypedDict, total=False):

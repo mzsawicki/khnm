@@ -18,6 +18,11 @@ def get_queue_name(pipe_name: str) -> str:
     return f"khnm.q.{pipe_name}"
 
 
+def get_dlq_name(pipe_name: str) -> str:
+    original_queue_name = get_queue_name(pipe_name)
+    return f"{original_queue_name}.dlq"
+
+
 async def declare_pipe(
     channel: AbstractChannel,
     name: str,
@@ -36,6 +41,11 @@ async def declare_pipe(
     else:
         queue = await channel.declare_queue(name=queue_name, durable=durable)
     await queue.bind(exchange, routing_key=queue_name)
+
+
+async def declare_dlq(channel: AbstractChannel, pipe_name: str) -> None:
+    dlq_name = get_dlq_name(pipe_name)
+    await channel.declare_queue(name=dlq_name, durable=True)
 
 
 async def send_message(

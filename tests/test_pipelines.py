@@ -4,16 +4,19 @@ from typing import AsyncGenerator, Optional, cast, Any
 
 import pytest
 from aio_pika.abc import AbstractRobustConnection
+from aiormq import ChannelInvalidStateError, ChannelNotFoundEntity
 
 from khnm.exceptions import NodeKwargsInvalid, PipelineDefinitionInvalid
 from khnm.pipelines import make_pipeline
 from tests.doubles import (
-    generate_random_numbers_async,
+    generate_numbers_async,
     async_callback_stub,
     AsyncCallbackSpy,
     SampleDataObject,
+    generate_single_message_async,
+    generate_numbers_sync,
 )
-from tests.utils import timeout
+from tests.utils import timeout, get_queue_messages_count
 
 
 async def test_pipeline_sends_messages_source_to_sink(
@@ -23,7 +26,7 @@ async def test_pipeline_sends_messages_source_to_sink(
 
     pipeline = (
         make_pipeline()
-        .source("test-source", generate_random_numbers_async)
+        .source("test-source", generate_numbers_async)
         .node("test-node", async_callback_stub)
         .sink("test-sink", spy)
         .build()
@@ -53,7 +56,7 @@ async def test_pipeline_with_multiple_intermediate_nodes(
 
     pipeline = (
         make_pipeline()
-        .source("test-source", generate_random_numbers_async)
+        .source("test-source", generate_numbers_async)
         .node("test-node-1", async_callback_stub)
         .node("test-node-2", async_callback_stub)
         .sink("test-sink", spy)
@@ -190,7 +193,7 @@ async def test_node_runs_on_multiple_threads(
 
     pipeline = (
         make_pipeline()
-        .source("source", generate_random_numbers_async)
+        .source("source", generate_numbers_async)
         .node("node", slow_callback)
         .sink("sink", spy)
         .build()
@@ -231,7 +234,7 @@ async def test_sequential_node_is_detected_by_barrier(
 
     pipeline = (
         make_pipeline()
-        .source("source", generate_random_numbers_async)
+        .source("source", generate_numbers_async)
         .node("node", slow_callback)
         .sink("sink", spy)
         .build()
@@ -274,7 +277,7 @@ async def test_sink_runs_on_multiple_threads(
 
     pipeline = (
         make_pipeline()
-        .source("source", generate_random_numbers_async)
+        .source("source", lambda: generate_numbers_sync(threads))
         .sink("sink", sink_callback)
         .build()
     )
@@ -313,7 +316,7 @@ async def test_sequential_sink_is_detected_by_barrier(
 
     pipeline = (
         make_pipeline()
-        .source("source", generate_random_numbers_async)
+        .source("source", generate_numbers_async)
         .sink("sink", sink_callback)
         .build()
     )
@@ -355,9 +358,7 @@ async def test_source_node_kwargs_raises_exception_at_invalid_kwargs(
     with pytest.raises(NodeKwargsInvalid):
         (
             make_pipeline()
-            .source(
-                "source", generate_random_numbers_async, **{kwarg_name: kwarg_value}
-            )
+            .source("source", generate_numbers_async, **{kwarg_name: kwarg_value})
             .sink("sink", lambda obj: None)
             .build()
         )
@@ -383,7 +384,7 @@ async def test_sink_node_kwargs_raises_exception_at_invalid_kwargs(
     with pytest.raises(NodeKwargsInvalid):
         (
             make_pipeline()
-            .source("source", generate_random_numbers_async)
+            .source("source", generate_numbers_async)
             .sink("sink", lambda obj: None, **{kwarg_name: kwarg_value})
             .build()
         )
@@ -393,4 +394,45 @@ async def test_pipeline_raises_exception_when_below_two_nodes(
     amqp_connection: AbstractRobustConnection,
 ) -> None:
     with pytest.raises(PipelineDefinitionInvalid):
-        (make_pipeline().source("source", generate_random_numbers_async).build())
+        (make_pipeline().source("source", generate_numbers_async).build())
+
+
+async def test_message_is_delivered_to_dlq_after_max_callback_failures_on_sync_node(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    def fail(obj: SampleDataObject) -> SampleDataObject:
+        raise RuntimeError("Callback failure")
+
+    pipeline = (
+        make_pipeline()
+        .source("source", generate_single_message_async)
+        .node("node", fail, dlq=True, max_callback_retries=0)
+        .sink("sink", lambda obj: None)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "node")),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink")),
+    ]
+
+    async def dead_message_present() -> bool:
+        try:
+            message_count = await get_queue_messages_count(
+                amqp_connection, "khnm.q.node.dlq"
+            )
+        except ChannelInvalidStateError:
+            return False
+        except ChannelNotFoundEntity:
+            return False
+        return message_count == 1
+
+    success = await timeout(
+        dead_message_present, awaited_result=True, timeout_seconds=10
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success
