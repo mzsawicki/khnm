@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Optional, cast, Any
 
 import pytest
 from aio_pika.abc import AbstractRobustConnection
+from aio_pika.exceptions import QueueEmpty
 from aiormq import ChannelInvalidStateError, ChannelNotFoundEntity
 
 from khnm.exceptions import NodeKwargsInvalid, PipelineDefinitionInvalid
@@ -479,6 +480,98 @@ async def test_callback_is_retried_exact_number_times_before_dead_on_sync_node(
         message_attempts_count,
         awaited_result=max_callback_retries + 1,
         timeout_seconds=10,
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert attempts_count == max_callback_retries + 1
+
+
+async def test_message_is_delivered_to_dlq_after_max_callback_failures_on_async_node(
+    amqp_connection: AbstractRobustConnection,
+) -> None:
+    async def fail(obj: SampleDataObject) -> SampleDataObject:
+        raise RuntimeError("Callback failure")
+
+    pipeline = (
+        make_pipeline()
+        .source("source", generate_single_message_async)
+        .node("node", fail, dlq=True, max_callback_retries=0)
+        .sink("sink", lambda obj: None)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "node")),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink")),
+    ]
+
+    async def dead_message_present() -> bool:
+        try:
+            message_count = await get_queue_messages_count(
+                amqp_connection, "khnm.q.node.dlq"
+            )
+        except ChannelInvalidStateError:
+            return False
+        except ChannelNotFoundEntity:
+            return False
+        return message_count == 1
+
+    success = await timeout(
+        dead_message_present, awaited_result=True, timeout_seconds=10
+    )
+
+    for task in tasks:
+        task.cancel()
+
+    assert success
+
+
+@pytest.mark.parametrize("max_callback_retries", [0, 1, 2, 4, 5, 10, 30, 50, 100])
+async def test_callback_is_retried_exact_number_times_before_dead_on_async_node(
+    amqp_connection: AbstractRobustConnection,
+    max_callback_retries: int,
+) -> None:
+    async def fail(obj: SampleDataObject) -> SampleDataObject:
+        raise RuntimeError("Callback failure")
+
+    pipeline = (
+        make_pipeline()
+        .source("source", generate_single_message_async)
+        .node("node", fail, dlq=True, max_callback_retries=max_callback_retries)
+        .sink("sink", lambda obj: None)
+        .build()
+    )
+
+    tasks = [
+        asyncio.create_task(pipeline.run(amqp_connection, "source")),
+        asyncio.create_task(pipeline.run(amqp_connection, "node")),
+        asyncio.create_task(pipeline.run(amqp_connection, "sink")),
+    ]
+
+    async def message_attempts_count() -> int:
+        async with amqp_connection.channel() as channel:
+            try:
+                queue = await channel.get_queue("khnm.q.node.dlq")
+            except ChannelNotFoundEntity:
+                return 0
+            except ChannelInvalidStateError:
+                return 0
+            except QueueEmpty:
+                return 0
+            message = await queue.get()
+            if message:
+                retry_count = message.headers.get("x-callback-attempts-count", 0)
+                return retry_count if isinstance(retry_count, int) else 0
+            else:
+                return 0
+
+    attempts_count = await timeout(
+        message_attempts_count,
+        awaited_result=max_callback_retries + 1,
+        timeout_seconds=30,
     )
 
     for task in tasks:

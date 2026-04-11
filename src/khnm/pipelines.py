@@ -262,9 +262,13 @@ class Node(Runner):
                         raise TypeError(
                             f"Expected callback to be awaitable, got {type(awaitable)}"
                         )
-                    result = await awaitable
-                    if result is not None:
-                        await _handle_callback_output(result, producer)
+                    try:
+                        result = await awaitable
+                    except Exception:
+                        await self._handle_callback_failure(connection, current_message)
+                    else:
+                        if result is not None:
+                            await _handle_callback_output(result, producer)
 
     async def _run_sync_callback(
         self,
