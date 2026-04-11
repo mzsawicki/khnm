@@ -299,9 +299,9 @@ class Node(Runner):
     async def _handle_callback_failure(
         self, connection: AbstractRobustConnection, message: AbstractIncomingMessage
     ) -> None:
-        retry_count_header = message.headers.get("x-callback-retry-count", 0)
+        retry_count_header = message.headers.get("x-callback-attempts-count", 0)
         retry_count = retry_count_header if isinstance(retry_count_header, int) else 0
-        new_headers = {**message.headers, "x-callback-retry-count": retry_count + 1}
+        new_headers = {**message.headers, "x-callback-attempts-count": retry_count + 1}
         new_message = Message(body=message.body, headers=new_headers)
         if retry_count < self._max_callback_retries:
             target_queue = get_queue_name(self._upstream_pipe)
