@@ -345,11 +345,17 @@ class Sink(Runner):
         return self._name
 
     async def run(self, connection: AbstractRobustConnection, threads: int) -> None:
+        if self._dlq:
+            await self._make_dlq(connection)
         is_callback_async = _is_callback_async(self._callback)
         if is_callback_async:
             await self._run_async(connection)
         else:
             await self._run_sync(connection, threads)
+
+    async def _make_dlq(self, connection: AbstractRobustConnection) -> None:
+        async with connection.channel() as channel:
+            await channel.declare_queue(get_dlq_name(self._name), durable=True)
 
     async def _run_async(self, connection: AbstractRobustConnection) -> None:
         while True:
@@ -398,9 +404,34 @@ class Sink(Runner):
         ) -> None:
             async with message_context as current_message:
                 obj = message_to_pydantic_model(current_message, Bag)
-                await loop.run_in_executor(executor, self._callback, obj)
+                try:
+                    await loop.run_in_executor(executor, self._callback, obj)
+                except Exception:
+                    await self._handle_callback_failure(connection, current_message)
+                    return
 
         await _dispatch_concurrent(self._consume(connection), threads, process)
+
+    async def _handle_callback_failure(
+        self, connection: AbstractRobustConnection, message: AbstractIncomingMessage
+    ) -> None:
+        attempt_count_header = message.headers.get("x-callback-attempts-count", 0)
+        attempt_count = (
+            attempt_count_header if isinstance(attempt_count_header, int) else 0
+        )
+        new_headers = {
+            **message.headers,
+            "x-callback-attempts-count": attempt_count + 1,
+        }
+        new_message = Message(body=message.body, headers=new_headers)
+        if attempt_count < self._max_callback_retries:
+            target_queue = get_queue_name(self._upstream_pipe)
+        else:
+            target_queue = get_dlq_name(self._name)
+        async with connection.channel() as channel:
+            await channel.default_exchange.publish(
+                new_message, routing_key=target_queue
+            )
 
 
 class SinkKwargs(TypedDict, total=False):
