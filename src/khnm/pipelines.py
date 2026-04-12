@@ -390,7 +390,10 @@ class Sink(Runner):
                     raise TypeError(
                         f"Expected callback to be awaitable, got {type(awaitable).__name__}"
                     )
-                await awaitable
+                try:
+                    await awaitable
+                except Exception:
+                    await self._handle_callback_failure(connection, current_message)
 
     async def _run_sync_callback(
         self,
