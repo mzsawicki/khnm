@@ -265,7 +265,13 @@ class Node(Runner):
                     try:
                         result = await awaitable
                     except Exception:
-                        await self._handle_callback_failure(connection, current_message)
+                        await _handle_callback_failure(
+                            connection,
+                            current_message,
+                            upstream_pipe=self._upstream_pipe,
+                            name=self._name,
+                            max_callback_retries=self._max_callback_retries,
+                        )
                     else:
                         if result is not None:
                             await _handle_callback_output(result, producer)
@@ -293,28 +299,18 @@ class Node(Runner):
                             executor, self._callback, obj
                         )
                     except Exception:
-                        await self._handle_callback_failure(connection, current_message)
+                        await _handle_callback_failure(
+                            connection,
+                            current_message,
+                            upstream_pipe=self._upstream_pipe,
+                            name=self._name,
+                            max_callback_retries=self._max_callback_retries,
+                        )
                         return
                     if result is not None:
                         await _handle_callback_output(result, producer)
 
             await _dispatch_concurrent(self._consume(connection), threads, process)
-
-    async def _handle_callback_failure(
-        self, connection: AbstractRobustConnection, message: AbstractIncomingMessage
-    ) -> None:
-        retry_count_header = message.headers.get("x-callback-attempts-count", 0)
-        retry_count = retry_count_header if isinstance(retry_count_header, int) else 0
-        new_headers = {**message.headers, "x-callback-attempts-count": retry_count + 1}
-        new_message = Message(body=message.body, headers=new_headers)
-        if retry_count < self._max_callback_retries:
-            target_queue = get_queue_name(self._upstream_pipe)
-        else:
-            target_queue = get_dlq_name(self._name)
-        async with connection.channel() as channel:
-            await channel.default_exchange.publish(
-                new_message, routing_key=target_queue
-            )
 
 
 class Sink(Runner):
@@ -393,7 +389,13 @@ class Sink(Runner):
                 try:
                     await awaitable
                 except Exception:
-                    await self._handle_callback_failure(connection, current_message)
+                    await _handle_callback_failure(
+                        connection,
+                        current_message,
+                        upstream_pipe=self._upstream_pipe,
+                        name=self._name,
+                        max_callback_retries=self._max_callback_retries,
+                    )
 
     async def _run_sync_callback(
         self,
@@ -410,31 +412,16 @@ class Sink(Runner):
                 try:
                     await loop.run_in_executor(executor, self._callback, obj)
                 except Exception:
-                    await self._handle_callback_failure(connection, current_message)
+                    await _handle_callback_failure(
+                        connection,
+                        current_message,
+                        upstream_pipe=self._upstream_pipe,
+                        name=self._name,
+                        max_callback_retries=self._max_callback_retries,
+                    )
                     return
 
         await _dispatch_concurrent(self._consume(connection), threads, process)
-
-    async def _handle_callback_failure(
-        self, connection: AbstractRobustConnection, message: AbstractIncomingMessage
-    ) -> None:
-        attempt_count_header = message.headers.get("x-callback-attempts-count", 0)
-        attempt_count = (
-            attempt_count_header if isinstance(attempt_count_header, int) else 0
-        )
-        new_headers = {
-            **message.headers,
-            "x-callback-attempts-count": attempt_count + 1,
-        }
-        new_message = Message(body=message.body, headers=new_headers)
-        if attempt_count < self._max_callback_retries:
-            target_queue = get_queue_name(self._upstream_pipe)
-        else:
-            target_queue = get_dlq_name(self._name)
-        async with connection.channel() as channel:
-            await channel.default_exchange.publish(
-                new_message, routing_key=target_queue
-            )
 
 
 class SinkKwargs(TypedDict, total=False):
@@ -599,6 +586,28 @@ async def _dispatch_concurrent(
 
     if pending:
         await asyncio.gather(*pending)
+
+
+async def _handle_callback_failure(
+    connection: AbstractRobustConnection,
+    message: AbstractIncomingMessage,
+    upstream_pipe: str,
+    name: str,
+    max_callback_retries: int,
+) -> None:
+    attempt_count_header = message.headers.get("x-callback-attempts-count", 0)
+    attempt_count = attempt_count_header if isinstance(attempt_count_header, int) else 0
+    new_headers = {
+        **message.headers,
+        "x-callback-attempts-count": attempt_count + 1,
+    }
+    new_message = Message(body=message.body, headers=new_headers)
+    if attempt_count < max_callback_retries:
+        target_queue = get_queue_name(upstream_pipe)
+    else:
+        target_queue = get_dlq_name(name)
+    async with connection.channel() as channel:
+        await channel.default_exchange.publish(new_message, routing_key=target_queue)
 
 
 async def _handle_callback_output(result: CallbackOutputT, producer: Producer) -> None:
